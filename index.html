@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PHASE-0</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="hud top">
+      <div class="boss-wrap">
+        <div class="boss-bar"><div id="bossFill" class="boss-fill"></div></div>
+        <div id="phaseText" class="phase-text">PHASE 1</div>
+      </div>
+    </header>
+
+    <main class="game-shell">
+      <canvas id="gameCanvas" width="420" height="740"></canvas>
+
+      <div id="scoreCorner" class="corner-score">000000</div>
+
+      <div id="overlay" class="overlay visible">
+        <div class="panel">
+          <div class="panel-kicker">LOCAL SIMULATION BUILD</div>
+          <h2>PHASE-0</h2>
+          <p>
+            单体压制试验。<br />
+            拖动进行机动，松开进入低速观测。<br />
+            自动射击，判定点位于机体中心。
+          </p>
+          <div class="control-list">
+            <div>DRAG / MOVE</div>
+            <div>RELEASE / LOW-SPEED OBSERVATION</div>
+            <div>POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE</div>
+          </div>
+          <button id="startBtn" class="btn">开始试验</button>
+        </div>
+      </div>
+
+      <div id="resultOverlay" class="overlay hidden">
+        <div class="panel">
+          <div id="resultKicker" class="panel-kicker">COMBAT RESULT</div>
+          <h2 id="resultTitle">TARGET ELIMINATED</h2>
+          <div id="resultStats"></div>
+          <button id="restartBtn" class="btn">重新部署</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
