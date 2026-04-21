@@ -3253,77 +3253,262 @@
       const tipY = py - 12;
       const emitY = py - 24;
       const throatY = py - 44;
-      const backCenter = lerp(W * 0.5, px, 0.34);
+      const playerBias = clamp((px - W * 0.5) / Math.max(1, W * 0.5), -1, 1);
+      const towerCenter = lerp(W * 0.5, px, 0.12);
+      const layerCount = 5;
+      const towerEdgeOverscan = 112;
+      const towerDepthSwing = 0.5 + 0.5 * Math.sin(state.bomb.stageTimer * 1.9);
 
       for (const side of [-1, 1]) {
-        for (let layer = 0; layer < 3; layer++) {
-          const segments = [];
-          const rungCount = 10;
-          const scroll = state.bomb.stageTimer * (0.18 + layer * 0.035) + layer * 0.12;
+        const oppositeBoost = Math.max(0, -side * playerBias);
+        const sameSidePull = Math.max(0, side * playerBias);
+
+        for (let layer = 0; layer < layerCount; layer++) {
+          const frontSegments = [];
+          const backSegments = [];
+          const coreSegments = [];
+
+          const rungCount = 15 + Math.max(0, 2 - layer);
+          const layerDepth = layer / Math.max(1, layerCount - 1);
+          const scroll =
+            state.bomb.stageTimer * (0.16 + layer * 0.026) +
+            layer * 0.11;
 
           for (let rung = 0; rung < rungCount; rung++) {
             const phase = (scroll + rung / rungCount) % 1;
             const cell = Math.floor(scroll * rungCount) + rung;
-            const y = H + 28 - phase * (H + 220);
-            const outer = lerp(W * (0.60 + layer * 0.04), 96 + layer * 18, phase);
-            const inner = lerp(122 + layer * 26, 28 + layer * 8, phase);
-            const lift = lerp(28 + layer * 7, 8 + layer * 2, phase);
-            const depthSkew = lerp(18 + layer * 4, 4 + layer * 1.2, phase);
+            const y = H + 34 - phase * (H + 250);
+
+            const spreadT = easeOutCubic(phase);
+
+            // 底部收紧，顶部稍微展开
+            const farBase = lerp(
+              120 + layer * 18,
+              W * (0.72 + layer * 0.026),
+              spreadT
+            );
+            const nearBase = lerp(
+              34 + layer * 7,
+              150 + layer * 22,
+              spreadT
+            );
+
+            // 下面更紧更直，上面抬升稍大一点
+            const lift = lerp(
+              10 + layer * 2.0,
+              32 + layer * 6.0,
+              spreadT
+            );
+            const depthSkew = lerp(
+              5 + layer * 1.2,
+              24 + layer * 4.2,
+              spreadT
+            );
+
+            // 贴边补偿也主要作用在上半部，避免顶端缺口
+            const overscan = lerp(
+              0,
+              towerEdgeOverscan + layer * 18,
+              spreadT
+            ) * oppositeBoost;
+
+            const pull = lerp(
+              8 + layer * 2,
+              26 + layer * 5,
+              spreadT
+            ) * sameSidePull;
+
+            // 额外顶部展开，但控制得比较温和
+            const widthBoost = spreadT * (14 + layer * 4) * (0.55 + towerDepthSwing * 0.45);
+
+            const outer = farBase + overscan - pull + widthBoost;
+            const inner = Math.max(
+              nearBase + overscan * 0.18 - pull * 0.08 + widthBoost * 0.14,
+              24 + layer * 5
+            );
+
+            const middle = lerp(inner, outer, 0.46 + layerDepth * 0.08);
+
             const flip = cell % 2 === 0 ? 1 : -1;
-            const ax = backCenter + side * (flip > 0 ? outer : inner);
-            const bx = backCenter + side * (flip > 0 ? inner : outer) + side * depthSkew;
-            segments.push({
-              a: { x: ax, y },
-              b: { x: bx, y: y - lift },
+
+            const frontX = towerCenter + side * (flip > 0 ? outer : inner);
+            const backX = towerCenter + side * (flip > 0 ? inner : outer) + side * depthSkew;
+            const coreX = towerCenter + side * middle + side * depthSkew * 0.34;
+
+            frontSegments.push({
+              x: frontX,
               y,
+              phase,
+            });
+
+            backSegments.push({
+              x: backX,
+              y: y - lift,
+              phase,
+            });
+
+            coreSegments.push({
+              x: coreX,
+              y: y - lift * 0.52,
               phase,
             });
           }
 
-          segments.sort((lhs, rhs) => rhs.y - lhs.y);
-          const accent = colorRatio > 0.20 && layer === 0 ? (side < 0 ? 'magenta' : 'cyan') : 'white';
+          const accent =
+            colorRatio > 0.20 && layer <= 1
+              ? (side < 0 ? 'magenta' : 'cyan')
+              : 'white';
 
-          ctx.strokeStyle = palette(accent, attackRatio * (0.09 + layer * 0.028));
-          ctx.lineWidth = layer === 0 ? 2.2 : 1.55;
+          const frontAlpha = attackRatio * (0.10 + layer * 0.020);
+          const backAlpha = attackRatio * (0.058 + layer * 0.016);
+          const coreAlpha = attackRatio * (0.038 + layer * 0.010);
+
+          // 前轮廓
+          ctx.strokeStyle = palette(accent, frontAlpha);
+          ctx.lineWidth = layer === 0 ? 2.1 : layer === 1 ? 1.7 : 1.35;
           ctx.beginPath();
-          segments.forEach((seg, index) => {
-            if (index === 0) ctx.moveTo(seg.a.x, seg.a.y); else ctx.lineTo(seg.a.x, seg.a.y);
+          frontSegments.forEach((seg, index) => {
+            if (index === 0) ctx.moveTo(seg.x, seg.y);
+            else ctx.lineTo(seg.x, seg.y);
           });
           ctx.stroke();
 
-          ctx.strokeStyle = palette('white', attackRatio * (0.05 + layer * 0.020));
-          ctx.lineWidth = 1.25;
+          // 后轮廓
+          ctx.strokeStyle = palette('white', backAlpha);
+          ctx.lineWidth = layer === 0 ? 1.35 : 1.05;
           ctx.beginPath();
-          segments.forEach((seg, index) => {
-            if (index === 0) ctx.moveTo(seg.b.x, seg.b.y); else ctx.lineTo(seg.b.x, seg.b.y);
+          backSegments.forEach((seg, index) => {
+            if (index === 0) ctx.moveTo(seg.x, seg.y);
+            else ctx.lineTo(seg.x, seg.y);
           });
           ctx.stroke();
 
-          for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
-            const alpha = attackRatio * (0.040 + (1 - seg.phase) * 0.030 + layer * 0.008);
+          // 中间骨架
+          ctx.strokeStyle = palette(accent, coreAlpha);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          coreSegments.forEach((seg, index) => {
+            if (index === 0) ctx.moveTo(seg.x, seg.y);
+            else ctx.lineTo(seg.x, seg.y);
+          });
+          ctx.stroke();
+
+          for (let i = 0; i < frontSegments.length; i++) {
+            const f = frontSegments[i];
+            const b = backSegments[i];
+            const c = coreSegments[i];
+
+            const alpha = attackRatio * (0.040 + (1 - f.phase) * 0.034 + layer * 0.006);
+
+            // 前 -> 后
             ctx.strokeStyle = palette(i % 2 === 0 ? accent : 'white', alpha);
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(seg.a.x, seg.a.y);
-            ctx.lineTo(seg.b.x, seg.b.y);
+            ctx.moveTo(f.x, f.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+
+            // 前 -> 中
+            ctx.strokeStyle = palette(accent, alpha * 0.72);
+            ctx.beginPath();
+            ctx.moveTo(f.x, f.y);
+            ctx.lineTo(c.x, c.y);
+            ctx.stroke();
+
+            // 中 -> 后
+            ctx.strokeStyle = palette('white', alpha * 0.60);
+            ctx.beginPath();
+            ctx.moveTo(c.x, c.y);
+            ctx.lineTo(b.x, b.y);
             ctx.stroke();
           }
 
-          for (let i = 0; i < segments.length - 1; i++) {
-            const seg = segments[i];
-            const next = segments[i + 1];
-            ctx.strokeStyle = palette(accent, attackRatio * (0.032 + layer * 0.012));
+          for (let i = 0; i < frontSegments.length - 1; i++) {
+            const f0 = frontSegments[i];
+            const f1 = frontSegments[i + 1];
+            const b0 = backSegments[i];
+            const b1 = backSegments[i + 1];
+            const c0 = coreSegments[i];
+            const c1 = coreSegments[i + 1];
+
+            // 原有交错斜撑加强版
+            ctx.strokeStyle = palette(accent, attackRatio * (0.034 + layer * 0.010));
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(seg.a.x, seg.a.y);
-            ctx.lineTo(next.b.x, next.b.y);
+            ctx.moveTo(f0.x, f0.y);
+            ctx.lineTo(b1.x, b1.y);
             ctx.stroke();
 
-            ctx.strokeStyle = palette('white', attackRatio * (0.024 + layer * 0.010));
+            ctx.strokeStyle = palette('white', attackRatio * (0.026 + layer * 0.008));
             ctx.beginPath();
-            ctx.moveTo(seg.b.x, seg.b.y);
-            ctx.lineTo(next.a.x, next.a.y);
+            ctx.moveTo(b0.x, b0.y);
+            ctx.lineTo(f1.x, f1.y);
+            ctx.stroke();
+
+            // 中层连接
+            ctx.strokeStyle = palette(accent, attackRatio * (0.018 + layer * 0.006));
+            ctx.beginPath();
+            ctx.moveTo(c0.x, c0.y);
+            ctx.lineTo(c1.x, c1.y);
+            ctx.stroke();
+
+            // 相邻层封闭感
+            if (i % 2 === 0) {
+              ctx.strokeStyle = palette('white', attackRatio * (0.014 + layer * 0.005));
+              ctx.beginPath();
+              ctx.moveTo(f0.x, f0.y);
+              ctx.lineTo(c1.x, c1.y);
+              ctx.stroke();
+            } else {
+              ctx.strokeStyle = palette(accent, attackRatio * (0.014 + layer * 0.005));
+              ctx.beginPath();
+              ctx.moveTo(c0.x, c0.y);
+              ctx.lineTo(b1.x, b1.y);
+              ctx.stroke();
+            }
+          }
+
+          // 纵向导轨：每隔几根抽样一次，避免太乱
+          for (let i = 0; i < frontSegments.length - 3; i += 3) {
+            const f0 = frontSegments[i];
+            const f1 = frontSegments[i + 3];
+            const b0 = backSegments[i];
+            const b1 = backSegments[i + 3];
+            const c0 = coreSegments[i];
+            const c1 = coreSegments[i + 3];
+
+            ctx.strokeStyle = palette(accent, attackRatio * (0.020 + layer * 0.005));
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(f0.x, f0.y);
+            ctx.lineTo(f1.x, f1.y);
+            ctx.stroke();
+
+            ctx.strokeStyle = palette('white', attackRatio * (0.014 + layer * 0.004));
+            ctx.beginPath();
+            ctx.moveTo(b0.x, b0.y);
+            ctx.lineTo(b1.x, b1.y);
+            ctx.stroke();
+
+            ctx.strokeStyle = palette(accent, attackRatio * (0.012 + layer * 0.003));
+            ctx.beginPath();
+            ctx.moveTo(c0.x, c0.y);
+            ctx.lineTo(c1.x, c1.y);
+            ctx.stroke();
+          }
+
+          // 顶部封口线，让远端更像“塔”
+          if (frontSegments.length > 1) {
+            const topFront = frontSegments[frontSegments.length - 1];
+            const topBack = backSegments[backSegments.length - 1];
+            const topCore = coreSegments[coreSegments.length - 1];
+
+            ctx.strokeStyle = palette(accent, attackRatio * (0.026 + layer * 0.008));
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(topFront.x, topFront.y);
+            ctx.lineTo(topCore.x, topCore.y);
+            ctx.lineTo(topBack.x, topBack.y);
             ctx.stroke();
           }
         }
