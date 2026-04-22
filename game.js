@@ -35,6 +35,7 @@
   const BOMB_ASSAULT_COLOR_RAMP = 0.58;
   const BOMB_RECOVERY_TIME = 0.82;
   const BOMB_CANCEL_FX_TIME = 0.32;
+  const BOMB_PENDING_VICTORY_POSE = 0.76;
   const DEATH_ANIM_TIME = 2.0;
   const RESPAWN_RISE_TIME = 0.78;
   const RESPAWN_INVULN_TIME = 0.96;
@@ -98,6 +99,8 @@
       x: W / 2,
       y: 124,
       pose: 0,
+      pendingDuration: 0,
+      pendingStartPose: 0,
     },
     hint: {
       text: '',
@@ -228,6 +231,8 @@
     state.finish.x = state.boss.x;
     state.finish.y = state.boss.y;
     state.finish.pose = 0;
+    state.finish.pendingDuration = 0;
+    state.finish.pendingStartPose = 0;
     state.hint.text = '';
     state.hint.timer = 0;
     state.hint.duration = 0;
@@ -1628,12 +1633,23 @@
   function queueBombVictory() {
     if (state.bomb.pendingVictory || state.finish.active) return;
 
+    const remainingBombTime = Math.max(0.001, (
+      state.bomb.stage === 'assault' ? Math.max(0, BOMB_ASSAULT_TIME - state.bomb.stageTimer) : 0
+    ) + (
+      state.bomb.stage === 'recover' ? Math.max(0, BOMB_RECOVERY_TIME - state.bomb.stageTimer) : BOMB_RECOVERY_TIME
+    ));
+    const startPose = Math.max(state.finish.pose, 0.02);
+
     state.bomb.pendingVictory = true;
     state.boss.hp = 0;
     state.boss.damageFlash = 0.36;
     state.finish.x = state.boss.x;
     state.finish.y = state.boss.y;
-    state.finish.pose = Math.max(state.finish.pose, 0.22);
+    state.finish.pose = startPose;
+    state.finish.timer = 0;
+    state.finish.burstTick = 0;
+    state.finish.pendingDuration = remainingBombTime;
+    state.finish.pendingStartPose = startPose;
     state.shake = Math.max(state.shake, 0.72);
     state.killFlash = Math.max(state.killFlash, 0.12);
     state.invuln = Math.max(state.invuln, 0.9);
@@ -1664,12 +1680,37 @@
   }
 
   function updateBombSequence(dt) {
+    if (state.bomb.pendingVictory && !state.finish.active) {
+      const pendingDuration = Math.max(0.001, state.finish.pendingDuration || BOMB_RECOVERY_TIME);
+      state.finish.timer = Math.min(pendingDuration, state.finish.timer + dt);
+      state.finish.burstTick += dt;
+      state.finish.pose = lerp(
+        state.finish.pendingStartPose || 0.02,
+        BOMB_PENDING_VICTORY_POSE,
+        clamp(state.finish.timer / pendingDuration, 0, 1)
+      );
+
+      if (state.finish.burstTick >= 0.09) {
+        state.finish.burstTick = 0;
+        state.shake = Math.max(state.shake, 0.14 + (1 - state.finish.pose) * 0.16);
+        spawnBurst(
+          state.finish.x + rand(-18, 18),
+          state.finish.y + rand(-18, 18),
+          8,
+          20,
+          120,
+          {
+            color: 'white',
+            lifeMin: 0.16,
+            lifeSpread: 0.10,
+            size: 2,
+          }
+        );
+      }
+    }
     if (!state.bomb.active) return;
 
     state.bomb.stageTimer += dt;
-    if (state.bomb.pendingVictory && !state.finish.active) {
-      state.finish.pose = Math.min(0.58, state.finish.pose + dt * 0.34);
-    }
     state.timeScale += (1 - state.timeScale) * 0.18;
     state.invuln = Math.max(state.invuln, 0.18);
     clearEnemyBullets(false);
@@ -1761,6 +1802,7 @@
 
       while (state.bomb.damageTick >= 0.12) {
         state.bomb.damageTick -= 0.12;
+        if (state.bomb.pendingVictory) continue;
         if (!bossInBombSpray()) continue;
         const damage = 34 + state.phase * 7;
         state.boss.hp = Math.max(0, state.boss.hp - damage);
@@ -1780,10 +1822,9 @@
           size: 2,
         });
         if (state.boss.hp <= 0) {
-          queueBombVictory();
-          setBombStage('recover');
-          break;
-        }
+        queueBombVictory();
+        break;
+      }
       }
 
       if (state.bomb.stageTimer >= BOMB_ASSAULT_TIME) setBombStage('recover');
@@ -1801,10 +1842,16 @@
     state.bomb.pendingVictory = false;
     state.finish.x = state.boss.x;
     state.finish.y = state.boss.y;
+
+    const carriedPose = clamp(state.finish.pose || 0, 0, BOMB_PENDING_VICTORY_POSE);
+    const carriedTimer = carriedPose * VICTORY_ANIM_TIME;
+
     state.finish.active = true;
-    state.finish.timer = 0;
+    state.finish.timer = carriedTimer;
     state.finish.burstTick = 0;
-    state.finish.pose = 0;
+    state.finish.pose = carriedPose;
+    state.finish.pendingDuration = 0;
+    state.finish.pendingStartPose = 0;
     state.lifeFlow.mode = 'alive';
     state.lifeFlow.timer = 0;
     state.lifeFlow.duration = 0;
@@ -2230,7 +2277,6 @@
     updateBossPhase();
     if (state.boss.hp <= 0 && state.bomb.active && !state.bomb.pendingVictory) {
       queueBombVictory();
-      if (state.bomb.stage === 'assault') setBombStage('recover');
     }
     if (
       state.boss.hp <= 0 &&
@@ -3670,8 +3716,6 @@
   }
 
   function drawVictoryFx() {
-    if (!state.finish.active) return;
-
     const t = getVictoryPose();
     if (t <= 0) return;
 
