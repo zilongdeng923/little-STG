@@ -126,12 +126,15 @@ canvas {
 
 .overlay-modal {
   z-index: 4;
+  inset: 0;
+  padding: 16px 8px calc(env(safe-area-inset-bottom, 0px) + 32px);
+  overflow-y: auto;
   background: rgba(0, 0, 0, 0.78);
 }
 
 .panel {
   width: min(88%, 360px);
-  max-height: calc(100vh - 72px);
+  max-height: min(calc(100dvh - 32px), calc(100vh - 72px));
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: var(--panel);
@@ -151,6 +154,15 @@ canvas {
 .panel-leaderboard {
   text-align: left;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.panel-detail {
+  width: min(88%, 388px);
+  max-height: min(calc(100dvh - env(safe-area-inset-bottom, 0px) - 40px), calc(100vh - 72px));
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 14px 14px calc(18px + env(safe-area-inset-bottom, 0px) + 24px);
+  align-items: stretch;
 }
 
 .panel-leaderboard .panel-kicker,
@@ -258,11 +270,11 @@ canvas {
   min-height: 0;
   display: grid;
   gap: 10px;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .leaderboard-list,
-.leaderboard-detail {
+.detail-modal-content {
   min-height: 0;
   overflow: auto;
   border: 1px solid var(--line);
@@ -348,14 +360,83 @@ canvas {
   text-align: center;
 }
 
+.leaderboard-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+  padding: 2px 8px 0;
+}
+
+.detail-modal-content {
+  align-content: start;
+  padding: 12px;
+  max-height: min(54dvh, 420px);
+}
+
+.detail-modal-actions {
+  padding-top: 4px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+}
+
+.detail-modal-actions .btn {
+  padding-block: 12px;
+}
+
 .leaderboard-detail-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
   gap: 12px;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 14px;
+}
+
+.leaderboard-detail-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.leaderboard-detail-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.leaderboard-detail-identity {
+  min-width: 0;
+}
+
+.leaderboard-detail-stamp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  flex-wrap: wrap;
+}
+
+.leaderboard-detail-status {
+  min-width: 24px;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.leaderboard-detail-status.victory {
+  color: #deffe8;
+  border-color: rgba(209, 255, 223, 0.28);
+  background: rgba(145, 255, 187, 0.08);
+}
+
+.leaderboard-detail-status.fail {
+  color: #ffd9d9;
+  border-color: rgba(255, 206, 206, 0.26);
+  background: rgba(255, 123, 123, 0.08);
 }
 
 .leaderboard-detail-name {
@@ -363,10 +444,10 @@ canvas {
   font-weight: 700;
   letter-spacing: 0.04em;
   word-break: break-word;
+  margin-bottom: 6px;
 }
 
 .leaderboard-detail-meta {
-  margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
@@ -440,7 +521,16 @@ canvas {
   }
 
   .leaderboard-detail-head {
-    display: grid;
     gap: 6px;
+  }
+
+  .panel-detail {
+    width: min(92%, 360px);
+    max-height: min(calc(100dvh - env(safe-area-inset-bottom, 0px) - 28px), calc(100vh - 56px));
+    padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px) + 34px);
+  }
+
+  .detail-modal-content {
+    max-height: min(50dvh, 400px);
   }
 }

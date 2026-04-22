@@ -963,7 +963,7 @@
       .join('');
 
     const activeRecord = records.find((record) => record.id === activeId) || records[0];
-    leaderboardDetail.textContent = `当前选中：${activeRecord.name}，点击列表项可弹出详细结算。`;
+    leaderboardDetail.textContent = '点击列表项查看详细结算。';
 
     if (leaderboardDetailOverlay.classList.contains('visible')) {
       showLeaderboardDetailOverlay(activeRecord);
@@ -996,15 +996,22 @@
       return '<div class="leaderboard-empty">点击一条记录查看详细结算。</div>';
     }
 
-    const outcomeText = record.victory ? 'V / 胜利结算' : 'F / 失败结算';
+    const statusClass = record.victory ? 'victory' : 'fail';
+    const statusText = record.victory ? 'V' : 'F';
 
     return [
       '<div class="leaderboard-detail-head">',
-      '<div>',
+      '<div class="leaderboard-detail-card">',
+      '<div class="leaderboard-detail-main">',
+      '<div class="leaderboard-detail-identity">',
       `<div class="leaderboard-detail-name">${escapeHtml(record.name)}</div>`,
-      `<div class="leaderboard-detail-meta">${escapeHtml(outcomeText)}<br>${escapeHtml(formatSavedAt(record.savedAt))}</div>`,
+      '<div class="leaderboard-detail-stamp">',
+      `<span class="leaderboard-detail-status ${statusClass}">${statusText}</span>`,
+      `<span class="leaderboard-detail-meta">${escapeHtml(formatSavedAt(record.savedAt))}</span>`,
+      '</div>',
       '</div>',
       `<div class="leaderboard-detail-score">${formatScore(record.finalScore)}</div>`,
+      '</div>',
       '</div>',
       renderResultGrid(record.details),
     ].join('');
