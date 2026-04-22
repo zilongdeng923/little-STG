@@ -5044,6 +5044,7 @@
     const alpha = Math.min(fadeIn, fadeOut);
     const x = 20;
     const y = H - 42 + (1 - alpha) * 4;
+    const fontSize = state.language === 'ja' ? 13 : 14;
 
     ctx.save();
     ctx.textAlign = 'left';
