@@ -7,9 +7,7 @@ import {
   limitToLast,
   onValue,
   get,
-  set,
-  runTransaction,
-  remove,
+  set
 } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js';
 import { firebaseLeaderboardConfig } from './firebase-config.js';
 
@@ -84,7 +82,6 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   const MAX_LEADERBOARD_RECORDS = 50;
   const FIREBASE_LEADERBOARD_DEFAULTS = {
     records: 'phase0/leaderboard_records',
-    names: 'phase0/leaderboard_names',
   };
 
   const state = {
@@ -349,13 +346,40 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
           state.leaderboardRecords = loadLocalLeaderboardFromStorage();
           return () => {};
         },
-        async checkNameConflict(name) {
-          return findLocalLeaderboardNameConflict(name);
+        async getExistingRecord(name) {
+          const nameKey = normalizeNameKey(name);
+          return loadLocalLeaderboardFromStorage().find(
+            (record) => normalizeNameKey(record.name) === nameKey
+          ) || null;
         },
         async saveRecord(record) {
-          const records = persistLeaderboard([record, ...loadLocalLeaderboardFromStorage()]);
-          state.leaderboardRecords = records;
-          return record;
+          const nameKey = normalizeNameKey(record.name);
+          const records = loadLocalLeaderboardFromStorage();
+          const existing = records.find(
+            (item) => normalizeNameKey(item.name) === nameKey
+          );
+
+          if (existing && existing.finalScore >= record.finalScore) {
+            const error = new Error('SCORE_NOT_HIGHER');
+            error.code = 'SCORE_NOT_HIGHER';
+            error.existingRecord = existing;
+            throw error;
+          }
+
+          const nextRecord = normalizeLeaderboardRecord({
+            ...record,
+            id: nameKey,
+            nameKey,
+            sortScore: record.finalScore,
+          });
+
+          const filtered = records.filter(
+            (item) => normalizeNameKey(item.name) !== nameKey
+          );
+
+          persistLeaderboard([nextRecord, ...filtered]);
+          state.leaderboardRecords = loadLocalLeaderboardFromStorage();
+          return nextRecord;
         },
       };
     }
@@ -372,7 +396,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
           state.leaderboardRecords = [];
           return () => {};
         },
-        async checkNameConflict() {
+        async getExistingRecord() {
           throw new Error(`Firebase 配置缺少 ${missingKey}`);
         },
         async saveRecord() {
@@ -398,7 +422,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
           state.leaderboardRecords = [];
           return () => {};
         },
-        async checkNameConflict() {
+        async getExistingRecord() {
           throw error;
         },
         async saveRecord() {
@@ -459,43 +483,40 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
           }
         );
       },
-      async checkNameConflict(name) {
-        const snapshot = await get(ref(database, `${paths.names}/${normalizeNameKey(name)}`));
-        return snapshot.exists();
+
+      async getExistingRecord(name) {
+        const nameKey = normalizeNameKey(name);
+        const snapshot = await get(ref(database, `${paths.records}/${nameKey}`));
+        if (!snapshot.exists()) return null;
+        return normalizeLeaderboardRecord(snapshot.val());
       },
+
       async saveRecord(record) {
         const nameKey = normalizeNameKey(record.name);
-        const nameClaimRef = ref(database, `${paths.names}/${nameKey}`);
-        const claimResult = await runTransaction(nameClaimRef, (currentValue) => {
-          if (currentValue === null) return record.id;
-          return undefined;
-        });
+        const recordRef = ref(database, `${paths.records}/${nameKey}`);
+        const existingSnapshot = await get(recordRef);
+        const existingRecord = existingSnapshot.exists()
+          ? normalizeLeaderboardRecord(existingSnapshot.val())
+          : null;
 
-        if (!claimResult.committed) {
-          const error = new Error('NAME_TAKEN');
-          error.code = 'NAME_TAKEN';
+        if (existingRecord && existingRecord.finalScore >= record.finalScore) {
+          const error = new Error('SCORE_NOT_HIGHER');
+          error.code = 'SCORE_NOT_HIGHER';
+          error.existingRecord = existingRecord;
           throw error;
         }
 
         const nextRecord = normalizeLeaderboardRecord({
           ...record,
+          id: nameKey,
           nameKey,
           sortScore: record.finalScore,
         });
 
-        try {
-          await set(ref(database, `${paths.records}/${record.id}`), {
-            ...nextRecord,
-            sortScore: nextRecord.finalScore,
-          });
-        } catch (error) {
-          try {
-            await remove(nameClaimRef);
-          } catch (cleanupError) {
-            console.warn('Failed to rollback Firebase nickname claim.', cleanupError);
-          }
-          throw error;
-        }
+        await set(recordRef, {
+          ...nextRecord,
+          sortScore: nextRecord.finalScore,
+        });
 
         return nextRecord;
       },
@@ -572,40 +593,40 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       };
     }
 
-    if (state.leaderboardMode === 'firebase') {
-      try {
-        const occupied = await leaderboardClient.checkNameConflict(name);
+    try {
+      const existing = await leaderboardClient.getExistingRecord(name);
 
-        if (occupied) {
-          return {
-            ok: false,
-            message: '该昵称已被占用，请换一个昵称。',
-            tone: 'error',
-          };
-        }
-      } catch (error) {
-        console.warn('Failed to validate Firebase nickname.', error);
+      if (!existing) {
+        return {
+          ok: true,
+          message: state.leaderboardMode === 'firebase'
+            ? '该昵称还没有记录，保存后会创建新的排行榜成绩。'
+            : '该昵称还没有记录，保存后会写入当前浏览器的本地排行榜。',
+          tone: 'ok',
+        };
+      }
+
+      if (existing.finalScore >= state.lastResult.finalScore) {
         return {
           ok: false,
-          message: '昵称检查失败，请确认 Firebase 配置和规则。',
+          message: `该昵称已有更高或相同成绩（${formatScore(existing.finalScore)}），本次不能覆盖。`,
           tone: 'error',
         };
       }
-    } else if (findLocalLeaderboardNameConflict(name)) {
+
+      return {
+        ok: true,
+        message: `该昵称已有旧记录，将用更高分 ${formatScore(state.lastResult.finalScore)} 覆盖 ${formatScore(existing.finalScore)}。`,
+        tone: 'ok',
+      };
+    } catch (error) {
+      console.warn('Failed to validate leaderboard record.', error);
       return {
         ok: false,
-        message: '该昵称已被排行榜占用，请换一个昵称。',
+        message: '记录检查失败，请确认 Firebase 配置和规则。',
         tone: 'error',
       };
     }
-
-    return {
-      ok: true,
-      message: state.leaderboardMode === 'firebase'
-        ? '昵称可用，保存后会同步到全站共享排行榜。'
-        : '昵称可用，保存后会写入当前浏览器的本地排行榜。',
-      tone: 'ok',
-    };
   }
 
   async function updateSaveNameStatus() {
@@ -697,9 +718,12 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   }
 
   function createLeaderboardRecord(name, result) {
+    const nameKey = normalizeNameKey(name);
+
     return {
-      id: createRecordId(),
+      id: nameKey,
       name,
+      nameKey,
       victory: result.victory,
       title: result.title,
       finalScore: result.finalScore,
@@ -838,8 +862,11 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     } catch (error) {
       console.warn('Failed to save leaderboard record.', error);
 
-      if (error?.code === 'NAME_TAKEN' || error?.message === 'NAME_TAKEN') {
-        saveNameStatus.textContent = '该昵称刚刚被其他玩家占用了，请换一个昵称。';
+      if (error?.code === 'SCORE_NOT_HIGHER') {
+        const existingScore = error?.existingRecord?.finalScore;
+        saveNameStatus.textContent = Number.isFinite(existingScore)
+          ? `该昵称已有更高或相同成绩（${formatScore(existingScore)}），本次不能覆盖。`
+          : '该昵称已有更高或相同成绩，本次不能覆盖。';
         saveNameStatus.className = 'input-hint error';
         saveNameInput.focus();
         return;
