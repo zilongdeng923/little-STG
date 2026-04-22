@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
 :root {
   --bg: #050505;
   --fg: #f5f5f5;
@@ -26,7 +27,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: "Courier New", Consolas, monospace;
+  font-family: "Noto Sans SC", "Noto Sans JP", sans-serif;
   height: 100%;
   overflow: hidden;
 }
@@ -275,6 +276,50 @@ canvas {
 
 .panel-copy {
   margin-top: -4px;
+}
+
+.phase-text,
+.corner-score,
+.panel-kicker,
+.panel h2,
+.btn,
+.leaderboard-rank,
+.leaderboard-score,
+.leaderboard-detail-score,
+.leaderboard-status,
+#languageBtn {
+  font-family: "Rajdhani", "Noto Sans SC", "Noto Sans JP", sans-serif;
+}
+
+.panel p,
+.control-list,
+.result-row,
+.leaderboard-name,
+.leaderboard-detail-name,
+.leaderboard-detail-meta,
+.leaderboard-empty,
+.text-input,
+.input-hint,
+#leaderboardDetail,
+#leaderboardDetailModal {
+  font-family: "Noto Sans SC", "Noto Sans JP", sans-serif;
+}
+
+.panel-kicker,
+.phase-text,
+.leaderboard-rank,
+.leaderboard-score,
+.leaderboard-detail-score,
+.corner-score {
+  letter-spacing: 0.12em;
+}
+
+.btn {
+  font-weight: 600;
+}
+
+.panel h2 {
+  font-weight: 700;
 }
 
 .control-list {

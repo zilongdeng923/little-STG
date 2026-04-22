@@ -261,7 +261,7 @@
       firebaseConfigMissing: 'Firebase 配置缺少 {key}',
       firebaseInitFailed: 'Firebase 初始化失败',
       firebaseSyncFailed: '云端排行榜同步失败',
-      hintReleaseMiracle: '觉得太难的话，就把手指轻轻放开一会儿吧，可能会引发奇迹喔',
+      hintReleaseMiracle: '觉得太难的话，就把手指放开一会儿吧，可能会引发奇迹喔',
       unknownSavedAt: '保存时间未知',
       phaseLabel: 'PHASE {phase}',
       languageButton: 'Language-{code}',
@@ -375,7 +375,7 @@
       firebaseConfigMissing: 'Firebase 設定に {key} がありません',
       firebaseInitFailed: 'Firebase の初期化に失敗しました',
       firebaseSyncFailed: 'クラウドランキングの同期に失敗しました',
-      hintReleaseMiracle: '難しいと感じたら、少しのあいだ指を離してみて。もしかしたら奇跡が起きるかも…？(๑•̀ㅂ•́)و✧',
+      hintReleaseMiracle: '難しいと感じたら、少しだけ指を離してみて。奇跡が起きるかも…？(๑•̀ㅂ•́)و✧',
       unknownSavedAt: '保存時刻不明',
       phaseLabel: 'PHASE {phase}',
       languageButton: 'Language-{code}',
@@ -5048,7 +5048,7 @@
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = '16px "Microsoft YaHei", "Noto Sans SC", sans-serif';
+    ctx.font = `${fontSize}px "Rajdhani", "Noto Sans JP", "Noto Sans SC", sans-serif`;
     ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.28})`;
     ctx.lineWidth = 4;
     ctx.strokeText(state.hint.text, x, y, W * 0.62);
