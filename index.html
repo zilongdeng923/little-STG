@@ -60,9 +60,18 @@
           <h2>排行榜</h2>
           <div class="leaderboard-shell">
             <div id="leaderboardList" class="leaderboard-list"></div>
-            <div id="leaderboardDetail" class="leaderboard-detail"></div>
+            <div id="leaderboardDetail" class="leaderboard-hint">点击一条记录查看详细结算。</div>
           </div>
           <button id="leaderboardExitBtn" class="btn">退出</button>
+        </div>
+      </div>
+
+      <div id="leaderboardDetailOverlay" class="overlay overlay-modal hidden">
+        <div class="panel panel-wide panel-detail">
+          <div class="panel-kicker">RANK DETAIL</div>
+          <h2>详细结算</h2>
+          <div id="leaderboardDetailModal" class="detail-modal-content"></div>
+          <button id="leaderboardDetailBackBtn" class="btn">返回排行榜</button>
         </div>
       </div>
 
@@ -89,6 +98,9 @@
     </main>
   </div>
 
-  <script type="module" src="game.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>

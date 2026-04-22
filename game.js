@@ -1,16 +1,3 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
-import {
-  getDatabase,
-  ref,
-  query,
-  orderByChild,
-  limitToLast,
-  onValue,
-  get,
-  set
-} from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js';
-import { firebaseLeaderboardConfig } from './firebase-config.js';
-
 (() => {
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
@@ -334,7 +321,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   }
 
   function createLeaderboardClient() {
-    const config = firebaseLeaderboardConfig || {};
+    const config = window.firebaseLeaderboardConfig || {};
     const firebaseConfig = config.firebase || {};
     const paths = {
       ...FIREBASE_LEADERBOARD_DEFAULTS,
@@ -389,6 +376,25 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       };
     }
 
+    if (!window.firebase || !window.firebase.apps || !window.firebase.database) {
+      return {
+        mode: 'firebase',
+        startSync() {
+          state.leaderboardMode = 'firebase';
+          state.leaderboardReady = true;
+          state.leaderboardError = 'Firebase 脚本未成功加载';
+          state.leaderboardRecords = [];
+          return () => {};
+        },
+        async getExistingRecord() {
+          throw new Error('Firebase scripts not loaded');
+        },
+        async saveRecord() {
+          throw new Error('Firebase scripts not loaded');
+        },
+      };
+    }
+
     const missingKey = getMissingFirebaseConfigKey(firebaseConfig);
 
     if (missingKey) {
@@ -413,8 +419,10 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     let database;
 
     try {
-      const app = initializeApp(firebaseConfig);
-      database = getDatabase(app);
+      const app = window.firebase.apps.length
+        ? window.firebase.app()
+        : window.firebase.initializeApp(firebaseConfig);
+      database = window.firebase.database(app);
     } catch (error) {
       console.warn('Failed to initialize Firebase leaderboard.', error);
 
@@ -443,15 +451,12 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
         state.leaderboardReady = false;
         state.leaderboardError = '';
 
-        const recordsQuery = query(
-          ref(database, paths.records),
-          orderByChild('sortScore'),
-          limitToLast(MAX_LEADERBOARD_RECORDS)
-        );
+        const recordsQuery = database
+          .ref(paths.records)
+          .orderByChild('sortScore')
+          .limitToLast(MAX_LEADERBOARD_RECORDS);
 
-        return onValue(
-          recordsQuery,
-          (snapshot) => {
+        const successHandler = (snapshot) => {
             const records = [];
 
             snapshot.forEach((childSnapshot) => {
@@ -472,8 +477,9 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
             if (saveOverlay.classList.contains('visible') && !state.saveSubmitting) {
               void updateSaveNameStatus();
             }
-          },
-          (error) => {
+        };
+
+        const errorHandler = (error) => {
             console.warn('Failed to sync Firebase leaderboard.', error);
             state.leaderboardReady = true;
             state.leaderboardError = '云端排行榜同步失败';
@@ -485,21 +491,26 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
             if (saveOverlay.classList.contains('visible') && !state.saveSubmitting) {
               void updateSaveNameStatus();
             }
-          }
-        );
+        };
+
+        recordsQuery.on('value', successHandler, errorHandler);
+
+        return () => {
+          recordsQuery.off('value', successHandler);
+        };
       },
 
       async getExistingRecord(name) {
         const nameKey = normalizeNameKey(name);
-        const snapshot = await get(ref(database, `${paths.records}/${nameKey}`));
+        const snapshot = await database.ref(`${paths.records}/${nameKey}`).once('value');
         if (!snapshot.exists()) return null;
         return normalizeLeaderboardRecord(snapshot.val());
       },
 
       async saveRecord(record) {
         const nameKey = normalizeNameKey(record.name);
-        const recordRef = ref(database, `${paths.records}/${nameKey}`);
-        const existingSnapshot = await get(recordRef);
+        const recordRef = database.ref(`${paths.records}/${nameKey}`);
+        const existingSnapshot = await recordRef.once('value');
         const existingRecord = existingSnapshot.exists()
           ? normalizeLeaderboardRecord(existingSnapshot.val())
           : null;
@@ -518,7 +529,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
           sortScore: record.finalScore,
         });
 
-        await set(recordRef, {
+        await recordRef.set({
           ...nextRecord,
           sortScore: nextRecord.finalScore,
         });

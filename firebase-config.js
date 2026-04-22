@@ -1,4 +1,4 @@
-export const firebaseLeaderboardConfig = {
+window.firebaseLeaderboardConfig = {
   enabled: true,
   firebase: {
     apiKey: "AIzaSyApdFLIKv_jQwFSSuA5Wg1AxYfiFKOCWNE",
@@ -10,7 +10,6 @@ export const firebaseLeaderboardConfig = {
     appId: "1:413430982294:web:65c4de4af0ef1f99b344b7"
   },
   paths: {
-    records: "phase0/leaderboard_records",
-    names: "phase0/leaderboard_names"
+    records: "phase0/leaderboard_records"
   }
 };
