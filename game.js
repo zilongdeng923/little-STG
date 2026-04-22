@@ -1,3 +1,18 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
+import {
+  getDatabase,
+  ref,
+  query,
+  orderByChild,
+  limitToLast,
+  onValue,
+  get,
+  set,
+  runTransaction,
+  remove,
+} from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js';
+import { firebaseLeaderboardConfig } from './firebase-config.js';
+
 (() => {
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
@@ -6,11 +21,23 @@
   const scoreCorner = document.getElementById('scoreCorner');
   const overlay = document.getElementById('overlay');
   const resultOverlay = document.getElementById('resultOverlay');
+  const leaderboardOverlay = document.getElementById('leaderboardOverlay');
+  const saveOverlay = document.getElementById('saveOverlay');
   const resultKicker = document.getElementById('resultKicker');
   const resultTitle = document.getElementById('resultTitle');
   const resultStats = document.getElementById('resultStats');
+  const leaderboardList = document.getElementById('leaderboardList');
+  const leaderboardDetail = document.getElementById('leaderboardDetail');
   const startBtn = document.getElementById('startBtn');
+  const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
   const restartBtn = document.getElementById('restartBtn');
+  const saveRecordBtn = document.getElementById('saveRecordBtn');
+  const resultLeaderboardBtn = document.getElementById('resultLeaderboardBtn');
+  const leaderboardExitBtn = document.getElementById('leaderboardExitBtn');
+  const saveNameInput = document.getElementById('saveNameInput');
+  const saveNameStatus = document.getElementById('saveNameStatus');
+  const confirmSaveBtn = document.getElementById('confirmSaveBtn');
+  const cancelSaveBtn = document.getElementById('cancelSaveBtn');
 
   const W = canvas.width;
   const H = canvas.height;
@@ -53,6 +80,12 @@
   const GRAZE_SCORE_BASE = 2.6;
   const GRAZE_SCORE_SCALE = 1.1;
   const BOMB_DAMAGE_SCORE = 4;
+  const LEADERBOARD_STORAGE_KEY = 'phase0.leaderboard.v1';
+  const MAX_LEADERBOARD_RECORDS = 50;
+  const FIREBASE_LEADERBOARD_DEFAULTS = {
+    records: 'phase0/leaderboard_records',
+    names: 'phase0/leaderboard_names',
+  };
 
   const state = {
     running: false,
@@ -92,6 +125,14 @@
     peakRate: 1,
     timePenalty: 0,
     shake: 0,
+    lastResult: null,
+    selectedLeaderboardId: null,
+    leaderboardMode: 'local',
+    leaderboardReady: false,
+    leaderboardError: '',
+    leaderboardRecords: [],
+    leaderboardSyncStop: null,
+    saveNameCheckToken: 0,
     finish: {
       active: false,
       timer: 0,
@@ -144,6 +185,8 @@
       pendingVictory: false,
     },
   };
+
+  const leaderboardClient = createLeaderboardClient();
 
   function initStars() {
     state.stars = Array.from({ length: 78 }, () => ({
@@ -225,6 +268,8 @@
     state.peakRate = 1;
     state.timePenalty = 0;
     state.shake = 0;
+    state.lastResult = null;
+    state.selectedLeaderboardId = null;
     state.finish.active = false;
     state.finish.timer = 0;
     state.finish.burstTick = 0;
@@ -273,10 +318,9 @@
 
   function startGame() {
     resetGame();
-    overlay.classList.remove('visible');
-    overlay.classList.add('hidden');
-    resultOverlay.classList.remove('visible');
-    resultOverlay.classList.add('hidden');
+    updateSaveButtonState();
+    hideSaveOverlay();
+    hideBaseOverlays();
     state.running = true;
     state.lastFrame = performance.now();
   }
@@ -287,7 +331,632 @@
     state.hint.duration = duration;
   }
 
+  function createLeaderboardClient() {
+    const config = firebaseLeaderboardConfig || {};
+    const firebaseConfig = config.firebase || {};
+    const paths = {
+      ...FIREBASE_LEADERBOARD_DEFAULTS,
+      ...(config.paths || {}),
+    };
+
+    if (!config.enabled) {
+      return {
+        mode: 'local',
+        startSync() {
+          state.leaderboardMode = 'local';
+          state.leaderboardReady = true;
+          state.leaderboardError = '';
+          state.leaderboardRecords = loadLocalLeaderboardFromStorage();
+          return () => {};
+        },
+        async checkNameConflict(name) {
+          return findLocalLeaderboardNameConflict(name);
+        },
+        async saveRecord(record) {
+          const records = persistLeaderboard([record, ...loadLocalLeaderboardFromStorage()]);
+          state.leaderboardRecords = records;
+          return record;
+        },
+      };
+    }
+
+    const missingKey = getMissingFirebaseConfigKey(firebaseConfig);
+
+    if (missingKey) {
+      return {
+        mode: 'firebase',
+        startSync() {
+          state.leaderboardMode = 'firebase';
+          state.leaderboardReady = true;
+          state.leaderboardError = `Firebase 配置缺少 ${missingKey}`;
+          state.leaderboardRecords = [];
+          return () => {};
+        },
+        async checkNameConflict() {
+          throw new Error(`Firebase 配置缺少 ${missingKey}`);
+        },
+        async saveRecord() {
+          throw new Error(`Firebase 配置缺少 ${missingKey}`);
+        },
+      };
+    }
+
+    let database;
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      database = getDatabase(app);
+    } catch (error) {
+      console.warn('Failed to initialize Firebase leaderboard.', error);
+
+      return {
+        mode: 'firebase',
+        startSync() {
+          state.leaderboardMode = 'firebase';
+          state.leaderboardReady = true;
+          state.leaderboardError = 'Firebase 初始化失败';
+          state.leaderboardRecords = [];
+          return () => {};
+        },
+        async checkNameConflict() {
+          throw error;
+        },
+        async saveRecord() {
+          throw error;
+        },
+      };
+    }
+
+    return {
+      mode: 'firebase',
+      startSync() {
+        state.leaderboardMode = 'firebase';
+        state.leaderboardReady = false;
+        state.leaderboardError = '';
+
+        const recordsQuery = query(
+          ref(database, paths.records),
+          orderByChild('sortScore'),
+          limitToLast(MAX_LEADERBOARD_RECORDS)
+        );
+
+        return onValue(
+          recordsQuery,
+          (snapshot) => {
+            const records = [];
+
+            snapshot.forEach((childSnapshot) => {
+              const normalized = normalizeLeaderboardRecord(childSnapshot.val());
+              if (normalized) records.push(normalized);
+            });
+
+            state.leaderboardRecords = records
+              .sort(sortLeaderboardRecords)
+              .slice(0, MAX_LEADERBOARD_RECORDS);
+            state.leaderboardReady = true;
+            state.leaderboardError = '';
+
+            if (leaderboardOverlay.classList.contains('visible')) {
+              renderLeaderboard(state.selectedLeaderboardId);
+            }
+
+            if (saveOverlay.classList.contains('visible')) {
+              void updateSaveNameStatus();
+            }
+          },
+          (error) => {
+            console.warn('Failed to sync Firebase leaderboard.', error);
+            state.leaderboardReady = true;
+            state.leaderboardError = '云端排行榜同步失败';
+
+            if (leaderboardOverlay.classList.contains('visible')) {
+              renderLeaderboard(state.selectedLeaderboardId);
+            }
+
+            if (saveOverlay.classList.contains('visible')) {
+              void updateSaveNameStatus();
+            }
+          }
+        );
+      },
+      async checkNameConflict(name) {
+        const snapshot = await get(ref(database, `${paths.names}/${normalizeNameKey(name)}`));
+        return snapshot.exists();
+      },
+      async saveRecord(record) {
+        const nameKey = normalizeNameKey(record.name);
+        const nameClaimRef = ref(database, `${paths.names}/${nameKey}`);
+        const claimResult = await runTransaction(nameClaimRef, (currentValue) => {
+          if (currentValue === null) return record.id;
+          return undefined;
+        });
+
+        if (!claimResult.committed) {
+          const error = new Error('NAME_TAKEN');
+          error.code = 'NAME_TAKEN';
+          throw error;
+        }
+
+        const nextRecord = normalizeLeaderboardRecord({
+          ...record,
+          nameKey,
+          sortScore: record.finalScore,
+        });
+
+        try {
+          await set(ref(database, `${paths.records}/${record.id}`), {
+            ...nextRecord,
+            sortScore: nextRecord.finalScore,
+          });
+        } catch (error) {
+          try {
+            await remove(nameClaimRef);
+          } catch (cleanupError) {
+            console.warn('Failed to rollback Firebase nickname claim.', cleanupError);
+          }
+          throw error;
+        }
+
+        return nextRecord;
+      },
+    };
+  }
+
+  function getMissingFirebaseConfigKey(config) {
+    const requiredKeys = [
+      'apiKey',
+      'authDomain',
+      'databaseURL',
+      'projectId',
+      'storageBucket',
+      'messagingSenderId',
+      'appId',
+    ];
+
+    return requiredKeys.find((key) => !String(config?.[key] ?? '').trim()) || '';
+  }
+
+  function initLeaderboardSync() {
+    if (typeof state.leaderboardSyncStop === 'function') {
+      state.leaderboardSyncStop();
+    }
+
+    state.leaderboardSyncStop = leaderboardClient.startSync();
+  }
+
+  function setOverlayVisibility(element, visible) {
+    element.classList.toggle('hidden', !visible);
+    element.classList.toggle('visible', visible);
+  }
+
+  function hideBaseOverlays() {
+    [overlay, resultOverlay, leaderboardOverlay].forEach((element) => {
+      setOverlayVisibility(element, false);
+    });
+  }
+
+  function showBaseOverlay(target) {
+    hideBaseOverlays();
+    setOverlayVisibility(target, true);
+  }
+
+  function showSaveOverlay() {
+    setOverlayVisibility(saveOverlay, true);
+    void updateSaveNameStatus();
+    saveNameInput.focus();
+    saveNameInput.select();
+  }
+
+  function hideSaveOverlay() {
+    setOverlayVisibility(saveOverlay, false);
+    state.saveNameCheckToken += 1;
+    saveNameStatus.textContent = getSaveOverlayHint();
+    saveNameStatus.className = 'input-hint';
+    confirmSaveBtn.disabled = !state.lastResult || state.lastResult.saved;
+  }
+
+  async function getSaveNameValidation(name = sanitizePlayerName(saveNameInput.value)) {
+    if (!name) {
+      return {
+        ok: false,
+        message: '请输入昵称后再保存。',
+        tone: 'error',
+      };
+    }
+
+    if (state.leaderboardMode === 'firebase' && state.leaderboardError) {
+      return {
+        ok: false,
+        message: state.leaderboardError,
+        tone: 'error',
+      };
+    }
+
+    if (state.leaderboardMode === 'firebase') {
+      try {
+        const occupied = await leaderboardClient.checkNameConflict(name);
+
+        if (occupied) {
+          return {
+            ok: false,
+            message: '该昵称已被占用，请换一个昵称。',
+            tone: 'error',
+          };
+        }
+      } catch (error) {
+        console.warn('Failed to validate Firebase nickname.', error);
+        return {
+          ok: false,
+          message: '昵称检查失败，请确认 Firebase 配置和规则。',
+          tone: 'error',
+        };
+      }
+    } else if (findLocalLeaderboardNameConflict(name)) {
+      return {
+        ok: false,
+        message: '该昵称已被排行榜占用，请换一个昵称。',
+        tone: 'error',
+      };
+    }
+
+    return {
+      ok: true,
+      message: state.leaderboardMode === 'firebase'
+        ? '昵称可用，保存后会同步到全站共享排行榜。'
+        : '昵称可用，保存后会写入当前浏览器的本地排行榜。',
+      tone: 'ok',
+    };
+  }
+
+  async function updateSaveNameStatus() {
+    const requestToken = ++state.saveNameCheckToken;
+    const name = sanitizePlayerName(saveNameInput.value);
+
+    if (!name) {
+      saveNameStatus.textContent = getSaveOverlayHint();
+      saveNameStatus.className = 'input-hint';
+      confirmSaveBtn.disabled = true;
+      return { ok: false, message: '' };
+    }
+
+    if (state.leaderboardMode === 'firebase' && !state.leaderboardError) {
+      saveNameStatus.textContent = '正在检查云端昵称占用...';
+      saveNameStatus.className = 'input-hint';
+      confirmSaveBtn.disabled = true;
+    }
+
+    const validation = await getSaveNameValidation(name);
+    if (requestToken !== state.saveNameCheckToken) return validation;
+
+    saveNameStatus.textContent = validation.message;
+    saveNameStatus.className = `input-hint ${validation.tone}`;
+    confirmSaveBtn.disabled = !validation.ok;
+    return validation;
+  }
+
+  function findLocalLeaderboardNameConflict(name) {
+    const normalizedName = normalizeNameKey(name);
+    if (!normalizedName) return false;
+
+    return loadLocalLeaderboardFromStorage().some((record) => normalizeNameKey(record.name) === normalizedName);
+  }
+
+  function getSaveOverlayHint() {
+    if (state.leaderboardMode === 'firebase') {
+      if (state.leaderboardError) return state.leaderboardError;
+      return '昵称将显示在全站共享排行榜中';
+    }
+
+    return '昵称将显示在当前浏览器的本地排行榜中';
+  }
+
+  function buildRunResult(victory) {
+    const clearBonus = victory ? CLEAR_SCORE_BONUS : 0;
+    const rawScore = Math.floor(state.score + clearBonus);
+    const timePenalty = Math.floor(state.timePenalty);
+    const afterPenalty = Math.max(0, rawScore - timePenalty);
+    const lifeMultiplier = 1 + Math.max(0, state.player.hp) * LIFE_SCORE_STEP;
+    const noHitMultiplier = state.noHit ? NO_HIT_SCORE_MULTIPLIER : 1.0;
+    const bombMultiplier = state.bomb.uses > 0 ? BOMB_SCORE_MULTIPLIER : 1.0;
+    const deathbombPenalty = deathbombPenaltyPercent(state.deathbombs);
+    const deathbombMultiplier = 1 - deathbombPenalty / 100;
+    const tacticMultiplier = bombMultiplier * deathbombMultiplier;
+    const finalScore = Math.max(0, Math.floor(afterPenalty * lifeMultiplier * noHitMultiplier * tacticMultiplier));
+
+    return {
+      victory,
+      title: victory ? '目标排除' : '模拟中断',
+      finalScore,
+      saved: false,
+      details: [
+        { label: '基础得分', value: formatScore(rawScore) },
+        { label: '通关奖励', value: formatScore(clearBonus) },
+        { label: '战斗时间', value: `${state.elapsed.toFixed(1)}s` },
+        { label: '擦弹帧数', value: Math.floor(state.grazeFrames) },
+        { label: '擦弹触发', value: state.grazeEntries },
+        { label: '峰值倍率', value: `x${state.peakRate.toFixed(2)}` },
+        { label: '炸弹发动', value: state.bomb.uses },
+        { label: '决死成功', value: state.deathbombs },
+        { label: '时间惩罚', value: formatScore(timePenalty) },
+        { label: '残机倍率', value: `x${lifeMultiplier.toFixed(2)}` },
+        { label: '无伤倍率', value: `x${noHitMultiplier.toFixed(2)}` },
+        { label: '炸弹修正', value: `x${bombMultiplier.toFixed(2)}` },
+        { label: '决死修正', value: `x${deathbombMultiplier.toFixed(2)}` },
+        { label: '最终得分', value: formatScore(finalScore), total: true },
+      ],
+    };
+  }
+
+  function renderResult(result) {
+    resultKicker.textContent = '模拟结果';
+    resultTitle.textContent = result.title;
+    resultStats.innerHTML = renderResultGrid(result.details);
+    updateSaveButtonState();
+    hideSaveOverlay();
+    showBaseOverlay(resultOverlay);
+  }
+
+  function createLeaderboardRecord(name, result) {
+    return {
+      id: createRecordId(),
+      name,
+      victory: result.victory,
+      title: result.title,
+      finalScore: result.finalScore,
+      savedAt: Date.now(),
+      details: result.details.map((row) => ({ ...row })),
+    };
+  }
+
+  function loadLeaderboard() {
+    if (state.leaderboardMode === 'firebase') {
+      return state.leaderboardRecords.slice();
+    }
+
+    return loadLocalLeaderboardFromStorage();
+  }
+
+  function loadLocalLeaderboardFromStorage() {
+    try {
+      const raw = localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+      if (!raw) return [];
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed
+        .map(normalizeLeaderboardRecord)
+        .filter(Boolean)
+        .sort(sortLeaderboardRecords)
+        .slice(0, MAX_LEADERBOARD_RECORDS);
+    } catch (error) {
+      console.warn('Failed to read leaderboard records.', error);
+      return [];
+    }
+  }
+
+  function persistLeaderboard(records) {
+    const normalized = records
+      .map(normalizeLeaderboardRecord)
+      .filter(Boolean)
+      .sort(sortLeaderboardRecords)
+      .slice(0, MAX_LEADERBOARD_RECORDS);
+
+    localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function normalizeLeaderboardRecord(record) {
+    if (!record || typeof record !== 'object') return null;
+
+    const detailSource = Array.isArray(record.details)
+      ? record.details
+      : (record.details && typeof record.details === 'object' ? Object.values(record.details) : []);
+    const details = detailSource
+      .map((row) => normalizeLeaderboardDetail(row))
+      .filter(Boolean);
+    const finalScore = Number.isFinite(record.finalScore)
+      ? Math.max(0, Math.floor(record.finalScore))
+      : 0;
+    const normalizedName = sanitizePlayerName(record.name) || 'ANON';
+
+    return {
+      id: typeof record.id === 'string' && record.id ? record.id : createRecordId(),
+      name: normalizedName,
+      nameKey: typeof record.nameKey === 'string' && record.nameKey
+        ? record.nameKey
+        : normalizeNameKey(normalizedName),
+      victory: Boolean(record.victory),
+      title: typeof record.title === 'string' && record.title
+        ? record.title
+        : (record.victory ? '目标排除' : '模拟中断'),
+      finalScore,
+      sortScore: Number.isFinite(record.sortScore)
+        ? Math.max(0, Math.floor(record.sortScore))
+        : finalScore,
+      savedAt: Number.isFinite(record.savedAt) ? record.savedAt : Date.now(),
+      details,
+    };
+  }
+
+  function normalizeLeaderboardDetail(row) {
+    if (!row || typeof row !== 'object') return null;
+
+    return {
+      label: String(row.label ?? '').trim(),
+      value: String(row.value ?? '').trim(),
+      total: Boolean(row.total),
+    };
+  }
+
+  function sortLeaderboardRecords(a, b) {
+    return b.finalScore - a.finalScore
+      || Number(b.victory) - Number(a.victory)
+      || b.savedAt - a.savedAt;
+  }
+
+  function updateSaveButtonState() {
+    const saved = Boolean(state.lastResult?.saved);
+    saveRecordBtn.disabled = !state.lastResult || saved;
+    saveRecordBtn.textContent = saved ? '记录已保存' : '保存记录';
+  }
+
+  function saveCurrentResult() {
+    if (!state.lastResult || state.lastResult.saved) return;
+
+    saveNameInput.value = '';
+    showSaveOverlay();
+  }
+
+  async function confirmSaveCurrentResult() {
+    if (!state.lastResult || state.lastResult.saved) {
+      hideSaveOverlay();
+      return;
+    }
+
+    const name = sanitizePlayerName(saveNameInput.value);
+    const validation = await getSaveNameValidation(name);
+
+    if (!validation.ok) {
+      saveNameStatus.textContent = validation.message;
+      saveNameStatus.className = `input-hint ${validation.tone}`;
+      saveNameInput.focus();
+      return;
+    }
+
+    try {
+      const nextRecord = createLeaderboardRecord(name, state.lastResult);
+      const savedRecord = await leaderboardClient.saveRecord(nextRecord);
+
+      state.lastResult.saved = true;
+      state.selectedLeaderboardId = savedRecord.id;
+      updateSaveButtonState();
+      hideSaveOverlay();
+
+      if (state.leaderboardMode === 'firebase') {
+        state.leaderboardRecords = [savedRecord, ...state.leaderboardRecords]
+          .map(normalizeLeaderboardRecord)
+          .filter(Boolean)
+          .sort(sortLeaderboardRecords)
+          .slice(0, MAX_LEADERBOARD_RECORDS);
+      }
+
+      renderLeaderboard(savedRecord.id);
+      showBaseOverlay(leaderboardOverlay);
+    } catch (error) {
+      console.warn('Failed to save leaderboard record.', error);
+
+      if (error?.code === 'NAME_TAKEN' || error?.message === 'NAME_TAKEN') {
+        saveNameStatus.textContent = '该昵称刚刚被其他玩家占用了，请换一个昵称。';
+        saveNameStatus.className = 'input-hint error';
+        saveNameInput.focus();
+        return;
+      }
+
+      window.alert(
+        state.leaderboardMode === 'firebase'
+          ? '保存失败，请确认 Firebase Realtime Database 已启用并且规则已配置。'
+          : '保存失败，当前环境可能不支持本地持久化。'
+      );
+    }
+  }
+
+  function renderLeaderboard(selectedId = state.selectedLeaderboardId) {
+    const records = loadLeaderboard();
+
+    if (state.leaderboardMode === 'firebase' && !state.leaderboardReady && !records.length) {
+      state.selectedLeaderboardId = null;
+      leaderboardList.innerHTML = '<div class="leaderboard-empty">云端排行榜连接中...</div>';
+      leaderboardDetail.innerHTML = '<div class="leaderboard-empty">正在从 Firebase 读取共享排行榜。</div>';
+      return;
+    }
+
+    if (state.leaderboardMode === 'firebase' && state.leaderboardError && !records.length) {
+      state.selectedLeaderboardId = null;
+      leaderboardList.innerHTML = `<div class="leaderboard-empty">${escapeHtml(state.leaderboardError)}</div>`;
+      leaderboardDetail.innerHTML = '<div class="leaderboard-empty">请先检查 firebase-config.js 和数据库规则配置。</div>';
+      return;
+    }
+
+    if (!records.length) {
+      state.selectedLeaderboardId = null;
+      leaderboardList.innerHTML = '<div class="leaderboard-empty">还没有记录，先完成一局并保存吧。</div>';
+      leaderboardDetail.innerHTML = `<div class="leaderboard-empty">${escapeHtml(getLeaderboardEmptyDetail())}</div>`;
+      return;
+    }
+
+    const activeId = records.some((record) => record.id === selectedId)
+      ? selectedId
+      : records[0].id;
+
+    state.selectedLeaderboardId = activeId;
+    leaderboardList.innerHTML = records
+      .map((record, index) => buildLeaderboardRow(record, index, record.id === activeId))
+      .join('');
+
+    const activeRecord = records.find((record) => record.id === activeId) || records[0];
+    leaderboardDetail.innerHTML = buildLeaderboardDetail(activeRecord);
+
+    leaderboardList.querySelectorAll('[data-record-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        renderLeaderboard(button.dataset.recordId);
+      });
+    });
+  }
+
+  function buildLeaderboardRow(record, index, active) {
+    return [
+      `<button type="button" class="leaderboard-row${active ? ' active' : ''}" data-record-id="${escapeHtml(record.id)}">`,
+      `<span class="leaderboard-rank">#${String(index + 1).padStart(2, '0')}</span>`,
+      `<span class="leaderboard-name">${escapeHtml(record.name)}</span>`,
+      `<span class="leaderboard-status ${record.victory ? 'victory' : 'fail'}">${record.victory ? 'V' : 'F'}</span>`,
+      `<strong class="leaderboard-score">${formatScore(record.finalScore)}</strong>`,
+      '</button>',
+    ].join('');
+  }
+
+  function buildLeaderboardDetail(record) {
+    if (!record) {
+      return '<div class="leaderboard-empty">点击一条记录查看详细结算。</div>';
+    }
+
+    const outcomeText = record.victory ? 'V / 胜利结算' : 'F / 失败结算';
+
+    return [
+      '<div class="leaderboard-detail-head">',
+      '<div>',
+      `<div class="leaderboard-detail-name">${escapeHtml(record.name)}</div>`,
+      `<div class="leaderboard-detail-meta">${escapeHtml(outcomeText)}<br>${escapeHtml(formatSavedAt(record.savedAt))}</div>`,
+      '</div>',
+      `<div class="leaderboard-detail-score">${formatScore(record.finalScore)}</div>`,
+      '</div>',
+      renderResultGrid(record.details),
+    ].join('');
+  }
+
+  function openLeaderboard() {
+    hideSaveOverlay();
+    renderLeaderboard();
+    showBaseOverlay(leaderboardOverlay);
+  }
+
+  function getLeaderboardEmptyDetail() {
+    if (state.leaderboardMode === 'firebase') {
+      return '云端榜单还没有记录。保存后，所有访问这个网址的玩家都会看到它。';
+    }
+
+    return '点击“保存记录”后，这里会显示完整结算表。';
+  }
+
+  function returnToStartScreen() {
+    hideSaveOverlay();
+    showBaseOverlay(overlay);
+  }
+
   function endGame(victory) {
+    finishRun(victory);
+    return;
+
     state.running = false;
     state.finish.active = false;
     state.bomb.active = false;
@@ -358,6 +1027,22 @@
   }
 
   function finishRun(victory) {
+    state.running = false;
+    state.finish.active = false;
+    state.lifeFlow.mode = 'alive';
+    state.lifeFlow.timer = 0;
+    state.lifeFlow.duration = 0;
+    state.bomb.active = false;
+
+    if (victory) {
+      state.shake = Math.max(state.shake, 1.0);
+      state.killFlash = Math.max(state.killFlash, 0.42);
+    }
+
+    state.lastResult = buildRunResult(victory);
+    renderResult(state.lastResult);
+    return;
+
     state.running = false;
     state.finish.active = false;
     state.lifeFlow.mode = 'alive';
@@ -3973,14 +4658,76 @@
   });
 
   startBtn.addEventListener('click', startGame);
+  menuLeaderboardBtn.addEventListener('click', openLeaderboard);
   restartBtn.addEventListener('click', startGame);
+  saveRecordBtn.addEventListener('click', saveCurrentResult);
+  resultLeaderboardBtn.addEventListener('click', openLeaderboard);
+  leaderboardExitBtn.addEventListener('click', returnToStartScreen);
+  confirmSaveBtn.addEventListener('click', confirmSaveCurrentResult);
+  cancelSaveBtn.addEventListener('click', hideSaveOverlay);
+  saveNameInput.addEventListener('input', updateSaveNameStatus);
+  saveNameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      confirmSaveCurrentResult();
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideSaveOverlay();
+    }
+  });
 
   function formatScore(value) {
     return String(Math.max(0, Math.floor(value))).padStart(6, '0');
   }
 
   function buildResultRow(label, value, total = false) {
-    return `<div class="result-row${total ? ' total' : ''}"><span>${label}</span><strong>${value}</strong></div>`;
+    return `<div class="result-row${total ? ' total' : ''}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+  }
+
+  function renderResultGrid(rows) {
+    return [
+      '<div class="result-grid">',
+      ...rows.map((row) => buildResultRow(row.label, row.value, row.total)),
+      '</div>',
+    ].join('');
+  }
+
+  function sanitizePlayerName(value) {
+    return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 16);
+  }
+
+  function normalizeNameKey(value) {
+    return sanitizePlayerName(value).toLocaleLowerCase('zh-CN');
+  }
+
+  function createRecordId() {
+    return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+
+  function formatSavedAt(timestamp) {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '保存时间未知';
+
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function clamp(v, a, b) {
@@ -4027,7 +4774,9 @@
     return min + Math.random() * (max - min);
   }
 
+  initLeaderboardSync();
   resetGame();
+  updateSaveButtonState();
   render();
   requestAnimationFrame(loop);
 })();

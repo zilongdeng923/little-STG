@@ -22,32 +22,73 @@
 
       <div id="overlay" class="overlay visible">
         <div class="panel">
-          <div class="panel-kicker">LOCAL BUILD</div>
+          <div class="panel-kicker">LOCAL SIMULATION BUILD</div>
           <h2>PHASE-0</h2>
           <p>
             单体压制试验。<br />
-            拖动操控机体，松手低速观测。
+            拖动进行机动，松开进入低速观测。<br />
+            自动射击，判定点位于机体中心。
           </p>
           <div class="control-list">
             <div>DRAG / MOVE</div>
-            <div>RELEASE / LOW-SPEED</div>
-            <div>POINT HITBOX / GRAZE / 5 PETAL LIFE</div>
+            <div>RELEASE / LOW-SPEED OBSERVATION</div>
+            <div>POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE</div>
           </div>
-          <button id="startBtn" class="btn">开始</button>
+          <div class="btn-stack">
+            <button id="startBtn" class="btn">开始试验</button>
+            <button id="menuLeaderboardBtn" class="btn btn-secondary">排行榜</button>
+          </div>
         </div>
       </div>
 
       <div id="resultOverlay" class="overlay hidden">
         <div class="panel">
-          <div id="resultKicker" class="panel-kicker">模拟结果</div>
-          <h2 id="resultTitle">目标排除</h2>
+          <div id="resultKicker" class="panel-kicker">COMBAT RESULT</div>
+          <h2 id="resultTitle">TARGET ELIMINATED</h2>
           <div id="resultStats"></div>
-          <button id="restartBtn" class="btn">重新部署</button>
+          <div class="btn-stack">
+            <button id="saveRecordBtn" class="btn">保存记录</button>
+            <button id="resultLeaderboardBtn" class="btn btn-secondary">查看排行榜</button>
+            <button id="restartBtn" class="btn">重新部署</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="leaderboardOverlay" class="overlay hidden">
+        <div class="panel panel-wide panel-leaderboard">
+          <div class="panel-kicker">RANKING ARCHIVE</div>
+          <h2>排行榜</h2>
+          <div class="leaderboard-shell">
+            <div id="leaderboardList" class="leaderboard-list"></div>
+            <div id="leaderboardDetail" class="leaderboard-detail"></div>
+          </div>
+          <button id="leaderboardExitBtn" class="btn">退出</button>
+        </div>
+      </div>
+
+      <div id="saveOverlay" class="overlay overlay-modal hidden">
+        <div class="panel panel-compact">
+          <div class="panel-kicker">SAVE RECORD</div>
+          <h2>保存记录</h2>
+          <p class="panel-copy">输入昵称后保存这次完整结算。</p>
+          <input
+            id="saveNameInput"
+            class="text-input"
+            type="text"
+            maxlength="16"
+            placeholder="输入昵称"
+            autocomplete="nickname"
+          />
+          <div id="saveNameStatus" class="input-hint">昵称将显示在排行榜中</div>
+          <div class="btn-stack">
+            <button id="confirmSaveBtn" class="btn">确认保存</button>
+            <button id="cancelSaveBtn" class="btn btn-secondary">取消</button>
+          </div>
         </div>
       </div>
     </main>
   </div>
 
-  <script src="game.js"></script>
+  <script type="module" src="game.js"></script>
 </body>
 </html>
