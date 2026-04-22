@@ -1214,9 +1214,12 @@
       ],
     };
   }
-    function getDeathbombsFromResult(result) {
+
+  function getDeathbombsFromResult(result) {
     if (!result?.details || !Array.isArray(result.details)) return 0;
-    const row = result.details.find((item) => item?.label === '决死成功');
+    const row = result.details.find(
+      (item) => item?.key === 'deathbombSuccess' || item?.label === '决死成功'
+    );
     if (!row) return 0;
     const value = Number(row.value);
     return Number.isFinite(value) ? value : 0;
@@ -1226,9 +1229,12 @@
     if (!existingRecord) return true;
 
     const normalized = normalizeNameKey(name);
-    const hermitKey = normalizeNameKey('我是决死仙人');
+    const hermitKeys = new Set([
+      normalizeNameKey('决死仙人'),
+      normalizeNameKey('我是决死仙人'),
+    ]);
 
-    if (normalized === hermitKey) {
+    if (hermitKeys.has(normalized)) {
       const newDeathbombs = Number(newRecord.deathbombs ?? 0);
       const oldDeathbombs = Number(existingRecord.deathbombs ?? 0);
 
