@@ -807,7 +807,7 @@
             (item) => normalizeNameKey(item.name) === nameKey
           );
 
-          if (existing && existing.finalScore >= record.finalScore) {
+          if (existing && !shouldOverwriteRecord(record.name, record, existing)) {
             const error = new Error('SCORE_NOT_HIGHER');
             error.code = 'SCORE_NOT_HIGHER';
             error.existingRecord = existing;
@@ -971,7 +971,7 @@
           ? normalizeLeaderboardRecord(existingSnapshot.val())
           : null;
 
-        if (existingRecord && existingRecord.finalScore >= record.finalScore) {
+        if (existingRecord && !shouldOverwriteRecord(record.name, record, existingRecord)) {
           const error = new Error('SCORE_NOT_HIGHER');
           error.code = 'SCORE_NOT_HIGHER';
           error.existingRecord = existingRecord;
@@ -1101,7 +1101,9 @@
         };
       }
 
-      if (existing.finalScore >= state.lastResult.finalScore) {
+      const candidateRecord = createLeaderboardRecord(name, state.lastResult);
+
+      if (!shouldOverwriteRecord(name, candidateRecord, existing)) {
         return {
           ok: false,
           message: t('scoreNotHigher', { score: formatScore(existing.finalScore) }),
@@ -1212,6 +1214,33 @@
       ],
     };
   }
+    function getDeathbombsFromResult(result) {
+    if (!result?.details || !Array.isArray(result.details)) return 0;
+    const row = result.details.find((item) => item?.label === '决死成功');
+    if (!row) return 0;
+    const value = Number(row.value);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function shouldOverwriteRecord(name, newRecord, existingRecord) {
+    if (!existingRecord) return true;
+
+    const normalized = normalizeNameKey(name);
+    const hermitKey = normalizeNameKey('我是决死仙人');
+
+    if (normalized === hermitKey) {
+      const newDeathbombs = Number(newRecord.deathbombs ?? 0);
+      const oldDeathbombs = Number(existingRecord.deathbombs ?? 0);
+
+      if (newDeathbombs > oldDeathbombs) return true;
+      if (newDeathbombs === oldDeathbombs && newRecord.finalScore > existingRecord.finalScore) {
+        return true;
+      }
+      return false;
+    }
+
+    return newRecord.finalScore > existingRecord.finalScore;
+  }
 
   function renderResult(result) {
     resultKicker.textContent = t('resultKicker');
@@ -1232,6 +1261,7 @@
       victory: result.victory,
       title: result.title,
       finalScore: result.finalScore,
+      deathbombs: getDeathbombsFromResult(result),
       savedAt: Date.now(),
       details: result.details.map((row) => ({ ...row })),
     };
@@ -1296,8 +1326,13 @@
         ? record.nameKey
         : normalizeNameKey(normalizedName),
       victory: Boolean(record.victory),
-      title: getVictoryTitle(Boolean(record.victory)),
+      title: typeof record.title === 'string' && record.title
+        ? record.title
+        : (record.victory ? '目标排除' : '模拟中断'),
       finalScore,
+      deathbombs: Number.isFinite(record.deathbombs)
+        ? Math.max(0, Math.floor(record.deathbombs))
+        : getDeathbombsFromResult(record),
       sortScore: Number.isFinite(record.sortScore)
         ? Math.max(0, Math.floor(record.sortScore))
         : finalScore,
