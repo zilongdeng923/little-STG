@@ -114,6 +114,12 @@ canvas {
   color: rgba(255, 255, 255, 0.92);
   font-size: 18px;
   letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  max-width: min(42vw, 180px);
+  font-variant-numeric: tabular-nums;
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
   pointer-events: none;
 }
@@ -573,9 +579,7 @@ canvas {
   }
 
   .corner-score {
-    font-size: 16px;
-    top: 16px;
-    left: 16px;
+    font-size: 15px;
   }
 
   .leaderboard-row {

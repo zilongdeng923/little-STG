@@ -1,6 +1,7 @@
 (() => {
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
+  const gameShell = canvas.parentElement;
   const bossFill = document.getElementById('bossFill');
   const phaseText = document.getElementById('phaseText');
   const scoreCorner = document.getElementById('scoreCorner');
@@ -3092,6 +3093,8 @@
       ctx.fillRect(Math.round(s.x), Math.round(s.y), s.s, s.s);
     }
 
+    const hudMetrics = getHudLayoutMetrics();
+
     drawBoss();
     drawBullets();
     drawFreezeChargeFx();
@@ -3101,7 +3104,7 @@
     drawLifeFlowFx();
     drawPlayer();
     drawVictoryFx();
-    drawSakuraLives();
+    drawSakuraLives(hudMetrics);
 
     ctx.restore();
 
@@ -3120,6 +3123,7 @@
 
     bossFill.style.width = `${(state.boss.hp / state.boss.maxHp) * 100}%`;
     phaseText.textContent = getPhaseLabel();
+    syncScoreCornerLayout(hudMetrics);
     scoreCorner.textContent = formatScore(Math.max(0, Math.floor(state.score)));
   }
 
@@ -4543,13 +4547,13 @@
     ctx.restore();
   }
 
-  function drawSakuraLives() {
+  function drawSakuraLives(hudMetrics = getHudLayoutMetrics()) {
     const critical = state.running && state.player.hp === 1;
     const criticalPulse = critical ? (0.5 + 0.5 * Math.sin(performance.now() * 0.0105)) : 0;
 
-    const cx = W - 56;
-    const cy = 58;
-    const size = 31 + state.sakuraPulse * 2.4 + criticalPulse * 1.8;
+    const cx = hudMetrics.lifeCx;
+    const cy = hudMetrics.lifeCy;
+    const size = hudMetrics.lifeSize + state.sakuraPulse * 2.4 + criticalPulse * 1.8;
     const jitterFactor = state.sakuraShock + (critical ? criticalPulse * 0.35 : 0);
     const jitterX = (Math.random() - 0.5) * jitterFactor * 2.4;
     const jitterY = (Math.random() - 0.5) * jitterFactor * 2.4;
@@ -4606,13 +4610,13 @@
       ctx.save();
       ctx.rotate((Math.PI * 2 * i) / MAX_LIVES);
       ctx.strokeStyle = `rgba(255,255,255,${i < state.player.hp ? (critical ? 0.72 + criticalPulse * 0.16 : 0.65) : 0.18})`;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = hudMetrics.lifeLineWidth;
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(0, -size * 0.58);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(0, -size * 0.58, 2.4, 0, Math.PI * 2);
+      ctx.arc(0, -size * 0.58, hudMetrics.lifeNodeRadius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,255,255,${i < state.player.hp ? (critical ? 0.95 + criticalPulse * 0.05 : 0.9) : 0.2})`;
       ctx.fill();
       ctx.restore();
@@ -4620,19 +4624,19 @@
 
     ctx.fillStyle = `rgba(255,255,255,${critical ? 0.84 + criticalPulse * 0.14 : 0.78 + state.sakuraPulse * 0.18})`;
     ctx.beginPath();
-    ctx.arc(0, 0, 12 + state.sakuraPulse * 1.2 + criticalPulse * 1.0, 0, Math.PI * 2);
+    ctx.arc(0, 0, hudMetrics.lifeCoreRadius + state.sakuraPulse * 1.2 + criticalPulse * 1.0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.arc(0, 0, 7.6, 0, Math.PI * 2);
+    ctx.arc(0, 0, hudMetrics.lifeCoreRadius * 0.64, 0, Math.PI * 2);
     ctx.fill();
 
     if (state.sakuraPulse > 0 || critical) {
       const ringAlpha = state.sakuraPulse > 0
         ? state.sakuraPulse * 0.6
         : 0.22 + criticalPulse * 0.28;
-      const ringRadius = 12 + (state.sakuraPulse > 0 ? (1 - state.sakuraPulse) * 10 : 6 + criticalPulse * 6);
+      const ringRadius = hudMetrics.lifeRingRadius + (state.sakuraPulse > 0 ? (1 - state.sakuraPulse) * 10 : 6 + criticalPulse * 6);
       ctx.strokeStyle = `rgba(255,255,255,${ringAlpha})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -4725,6 +4729,49 @@
       state.dragAnchor.px = state.player.x;
       state.dragAnchor.py = state.player.y;
     }
+  }
+
+  function getHudLayoutMetrics() {
+    const rect = canvas.getBoundingClientRect();
+    const shellRect = gameShell.getBoundingClientRect();
+    const displayScale = clamp(rect.width / W, 0.54, 1);
+    const compact = clamp((0.78 - displayScale) / 0.24, 0, 1);
+    const insetX = Math.max(10, rect.width * 0.032);
+    const insetY = Math.max(10, rect.height * 0.02);
+
+    return {
+      compact,
+      scoreLeft: Math.round(rect.left - shellRect.left + insetX),
+      scoreTop: Math.round(rect.top - shellRect.top + insetY),
+      scoreFontSize: Math.round(12 + displayScale * 6 - compact),
+      scoreMaxWidth: Math.round(Math.max(104, rect.width * 0.4)),
+      lifeCx: W - (58 + compact * 26),
+      lifeCy: 58 + compact * 16,
+      lifeSize: 31 - compact * 4.5,
+      lifeLineWidth: 1.6 - compact * 0.18,
+      lifeNodeRadius: 2.4 - compact * 0.28,
+      lifeCoreRadius: 12 - compact * 1.2,
+      lifeRingRadius: 12 - compact * 1.2,
+    };
+  }
+
+  function syncScoreCornerLayout(metrics) {
+    if (!metrics) return;
+
+    const layoutKey = [
+      metrics.scoreLeft,
+      metrics.scoreTop,
+      metrics.scoreFontSize,
+      metrics.scoreMaxWidth,
+    ].join('|');
+
+    if (scoreCorner.dataset.layoutKey === layoutKey) return;
+
+    scoreCorner.style.left = `${metrics.scoreLeft}px`;
+    scoreCorner.style.top = `${metrics.scoreTop}px`;
+    scoreCorner.style.fontSize = `${metrics.scoreFontSize}px`;
+    scoreCorner.style.maxWidth = `${metrics.scoreMaxWidth}px`;
+    scoreCorner.dataset.layoutKey = layoutKey;
   }
 
   function releasePointer() {
