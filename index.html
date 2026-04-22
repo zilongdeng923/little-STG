@@ -22,17 +22,17 @@
 
       <div id="overlay" class="overlay visible">
         <div class="panel">
-          <div class="panel-kicker">LOCAL SIMULATION BUILD</div>
-          <h2>PHASE-0</h2>
-          <p>
+          <div id="startKicker" class="panel-kicker">LOCAL SIMULATION BUILD</div>
+          <h2 id="startTitle">PHASE-0</h2>
+          <p id="startDescription">
             单体压制试验。<br />
             拖动进行机动，松开进入低速观测。<br />
             自动射击，判定点位于机体中心。
           </p>
           <div class="control-list">
-            <div>DRAG / MOVE</div>
-            <div>RELEASE / LOW-SPEED OBSERVATION</div>
-            <div>POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE</div>
+            <div id="controlMove">DRAG / MOVE</div>
+            <div id="controlObserve">RELEASE / LOW-SPEED OBSERVATION</div>
+            <div id="controlHitbox">POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE</div>
           </div>
           <div class="btn-stack">
             <button id="startBtn" class="btn">开始试验</button>
@@ -56,8 +56,8 @@
 
       <div id="leaderboardOverlay" class="overlay hidden">
         <div class="panel panel-wide panel-leaderboard">
-          <div class="panel-kicker">RANKING ARCHIVE</div>
-          <h2>排行榜</h2>
+          <div id="leaderboardKicker" class="panel-kicker">RANKING ARCHIVE</div>
+          <h2 id="leaderboardTitle">排行榜</h2>
           <div class="leaderboard-shell">
             <div id="leaderboardList" class="leaderboard-list"></div>
             <div id="leaderboardDetail" class="leaderboard-hint">点击一条记录查看详细结算。</div>
@@ -77,9 +77,9 @@
 
       <div id="saveOverlay" class="overlay overlay-modal hidden">
         <div class="panel panel-compact">
-          <div class="panel-kicker">SAVE RECORD</div>
-          <h2>保存记录</h2>
-          <p class="panel-copy">输入昵称后保存这次完整结算。</p>
+          <div id="saveKicker" class="panel-kicker">SAVE RECORD</div>
+          <h2 id="saveTitle">保存记录</h2>
+          <p id="saveCopy" class="panel-copy">输入昵称后保存这次完整结算。</p>
           <input
             id="saveNameInput"
             class="text-input"
@@ -95,6 +95,8 @@
           </div>
         </div>
       </div>
+
+      <button id="languageBtn" class="language-btn" type="button">Language-CN</button>
     </main>
   </div>
 
