@@ -121,6 +121,7 @@
     leaderboardSyncStop: null,
     saveNameCheckToken: 0,
     saveSubmitting: false,
+    uiTapLockUntil: 0,
     finish: {
       active: false,
       timer: 0,
@@ -564,6 +565,14 @@
   function setOverlayVisibility(element, visible) {
     element.classList.toggle('hidden', !visible);
     element.classList.toggle('visible', visible);
+  }
+
+  function setUiTapLock(duration = 220) {
+    state.uiTapLockUntil = performance.now() + duration;
+  }
+
+  function isUiTapLocked() {
+    return performance.now() < state.uiTapLockUntil;
   }
 
   function hideBaseOverlays() {
@@ -1018,6 +1027,8 @@
   }
 
   function openLeaderboard() {
+    if (isUiTapLocked()) return;
+
     hideSaveOverlay();
     renderLeaderboard();
     showBaseOverlay(leaderboardOverlay);
@@ -1033,6 +1044,7 @@
 
   function returnToStartScreen() {
     hideSaveOverlay();
+    setUiTapLock();
     showBaseOverlay(overlay);
   }
 
@@ -4740,12 +4752,26 @@
     });
   });
 
-  startBtn.addEventListener('click', startGame);
-  menuLeaderboardBtn.addEventListener('click', openLeaderboard);
-  restartBtn.addEventListener('click', startGame);
+  startBtn.addEventListener('click', () => {
+    if (isUiTapLocked()) return;
+    startGame();
+  });
+  menuLeaderboardBtn.addEventListener('click', () => {
+    openLeaderboard();
+  });
+  restartBtn.addEventListener('click', () => {
+    if (isUiTapLocked()) return;
+    startGame();
+  });
   saveRecordBtn.addEventListener('click', saveCurrentResult);
-  resultLeaderboardBtn.addEventListener('click', openLeaderboard);
-  leaderboardExitBtn.addEventListener('click', returnToStartScreen);
+  resultLeaderboardBtn.addEventListener('click', () => {
+    openLeaderboard();
+  });
+  leaderboardExitBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    returnToStartScreen();
+  });
   leaderboardDetailBackBtn.addEventListener('click', hideLeaderboardDetailOverlay);
   leaderboardDetailOverlay.addEventListener('click', (event) => {
     if (event.target === leaderboardDetailOverlay) {
