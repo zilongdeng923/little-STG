@@ -1,6 +1,7 @@
 (() => {
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
+  const gameShell = canvas.parentElement;
   const bossFill = document.getElementById('bossFill');
   const phaseText = document.getElementById('phaseText');
   const scoreCorner = document.getElementById('scoreCorner');
@@ -15,6 +16,7 @@
   const leaderboardList = document.getElementById('leaderboardList');
   const leaderboardDetail = document.getElementById('leaderboardDetail');
   const leaderboardDetailModal = document.getElementById('leaderboardDetailModal');
+  const languageBtn = document.getElementById('languageBtn');
   const startBtn = document.getElementById('startBtn');
   const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
   const restartBtn = document.getElementById('restartBtn');
@@ -69,12 +71,319 @@
   const GRAZE_SCORE_SCALE = 1.1;
   const BOMB_DAMAGE_SCORE = 4;
   const LEADERBOARD_STORAGE_KEY = 'phase0.leaderboard.v1';
+  const LANGUAGE_STORAGE_KEY = 'phase0.language';
   const MAX_LEADERBOARD_RECORDS = 50;
   const FIREBASE_LEADERBOARD_DEFAULTS = {
     records: 'phase0/leaderboard_records',
   };
+  const SUPPORTED_LANGUAGES = ['zh-CN', 'en', 'ja'];
+  const LANGUAGE_BADGE = {
+    'zh-CN': 'CN',
+    en: 'EN',
+    ja: 'JP',
+  };
+  const LANGUAGE_LOCALE = {
+    'zh-CN': 'zh-CN',
+    en: 'en-US',
+    ja: 'ja-JP',
+  };
+  const RESULT_LABELS = {
+    baseScore: {
+      'zh-CN': '基础得分',
+      en: 'BASE SCORE',
+      ja: '基本スコア',
+    },
+    clearBonus: {
+      'zh-CN': '通关奖励',
+      en: 'CLEAR BONUS',
+      ja: 'クリア報酬',
+    },
+    battleTime: {
+      'zh-CN': '战斗时间',
+      en: 'BATTLE TIME',
+      ja: '戦闘時間',
+    },
+    grazeFrames: {
+      'zh-CN': '擦弹帧数',
+      en: 'GRAZE FRAMES',
+      ja: 'かすりフレーム',
+    },
+    grazeEntries: {
+      'zh-CN': '擦弹触发',
+      en: 'GRAZE ENTRIES',
+      ja: 'かすり回数',
+    },
+    peakRate: {
+      'zh-CN': '峰值倍率',
+      en: 'PEAK RATE',
+      ja: '最大倍率',
+    },
+    bombUses: {
+      'zh-CN': '炸弹发动',
+      en: 'BOMB USES',
+      ja: 'ボム発動',
+    },
+    deathbombSuccess: {
+      'zh-CN': '决死成功',
+      en: 'DEATHBOMB SAVES',
+      ja: '決死成功',
+    },
+    timePenalty: {
+      'zh-CN': '时间惩罚',
+      en: 'TIME PENALTY',
+      ja: '時間ペナルティ',
+    },
+    lifeMultiplier: {
+      'zh-CN': '残机倍率',
+      en: 'LIFE MULTI',
+      ja: '残機倍率',
+    },
+    noHitMultiplier: {
+      'zh-CN': '无伤倍率',
+      en: 'NO-HIT MULTI',
+      ja: 'ノーヒット倍率',
+    },
+    bombAdjust: {
+      'zh-CN': '炸弹修正',
+      en: 'BOMB ADJUST',
+      ja: 'ボム補正',
+    },
+    deathbombAdjust: {
+      'zh-CN': '决死修正',
+      en: 'DEATHBOMB ADJUST',
+      ja: '決死補正',
+    },
+    finalScore: {
+      'zh-CN': '最终得分',
+      en: 'FINAL SCORE',
+      ja: '最終スコア',
+    },
+  };
+  const LEGACY_RESULT_LABEL_TO_KEY = {
+    '基础得分': 'baseScore',
+    'BASE SCORE': 'baseScore',
+    '基本スコア': 'baseScore',
+    '原始得分': 'baseScore',
+    '通关奖励': 'clearBonus',
+    'CLEAR BONUS': 'clearBonus',
+    'クリア報酬': 'clearBonus',
+    '战斗时间': 'battleTime',
+    'BATTLE TIME': 'battleTime',
+    '戦闘時間': 'battleTime',
+    '战斗用时': 'battleTime',
+    '擦弹帧数': 'grazeFrames',
+    'GRAZE FRAMES': 'grazeFrames',
+    'かすりフレーム': 'grazeFrames',
+    '擦弹触发': 'grazeEntries',
+    'GRAZE ENTRIES': 'grazeEntries',
+    'かすり回数': 'grazeEntries',
+    '峰值倍率': 'peakRate',
+    'PEAK RATE': 'peakRate',
+    '最大倍率': 'peakRate',
+    '炸弹发动': 'bombUses',
+    'BOMB USES': 'bombUses',
+    'ボム発動': 'bombUses',
+    '决死成功': 'deathbombSuccess',
+    'DEATHBOMB SAVES': 'deathbombSuccess',
+    '決死成功': 'deathbombSuccess',
+    '时间惩罚': 'timePenalty',
+    'TIME PENALTY': 'timePenalty',
+    '時間ペナルティ': 'timePenalty',
+    '战斗用时': 'battleTime',
+    '残机倍率': 'lifeMultiplier',
+    'LIFE MULTI': 'lifeMultiplier',
+    '残機倍率': 'lifeMultiplier',
+    '无伤倍率': 'noHitMultiplier',
+    'NO-HIT MULTI': 'noHitMultiplier',
+    'ノーヒット倍率': 'noHitMultiplier',
+    '炸弹修正': 'bombAdjust',
+    'BOMB ADJUST': 'bombAdjust',
+    'ボム補正': 'bombAdjust',
+    '决死修正': 'deathbombAdjust',
+    'DEATHBOMB ADJUST': 'deathbombAdjust',
+    '決死補正': 'deathbombAdjust',
+    '最终得分': 'finalScore',
+    'FINAL SCORE': 'finalScore',
+    '最終スコア': 'finalScore',
+    '最终分数': 'finalScore',
+    '最终': 'finalScore',
+  };
+  const I18N = {
+    'zh-CN': {
+      pageLang: 'zh-CN',
+      startKicker: 'LOCAL SIMULATION BUILD',
+      startTitle: 'PHASE-0',
+      startDescription: '单体压制试验。<br />拖动进行机动，松开进入低速观测。<br />自动射击，判定点位于机体中心。',
+      controlMove: 'DRAG / MOVE',
+      controlObserve: 'RELEASE / LOW-SPEED OBSERVATION',
+      controlHitbox: 'POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE',
+      startBtn: '开始试验',
+      menuLeaderboardBtn: '排行榜',
+      resultKicker: '模拟结果',
+      victoryTitle: '目标排除',
+      defeatTitle: '模拟中断',
+      saveRecordBtn: '保存记录',
+      saveRecordSaved: '记录已保存',
+      resultLeaderboardBtn: '查看排行榜',
+      restartBtn: '重新部署',
+      leaderboardKicker: 'RANKING ARCHIVE',
+      leaderboardTitle: '排行榜',
+      leaderboardHint: '点击列表项查看详细结算。',
+      leaderboardExitBtn: '退出',
+      leaderboardDetailBackBtn: '返回排行榜',
+      saveKicker: 'SAVE RECORD',
+      saveTitle: '保存记录',
+      saveCopy: '输入昵称后保存这次完整结算。',
+      savePlaceholder: '输入昵称',
+      saveConfirmBtn: '确认保存',
+      saveCancelBtn: '取消',
+      saveHintCloud: '昵称将显示在全站共享排行榜中',
+      saveHintLocal: '昵称将显示在当前浏览器的本地排行榜中',
+      savingStatus: '正在保存成绩...',
+      checkingCloudName: '正在检查云端昵称占用...',
+      inputNameFirst: '请输入昵称后再保存。',
+      noExistingCloud: '该昵称还没有记录，保存后会创建新的排行榜成绩。',
+      noExistingLocal: '该昵称还没有记录，保存后会写入当前浏览器的本地排行榜。',
+      scoreNotHigher: '该昵称已有更高或相同成绩（{score}），本次不能覆盖。',
+      scoreNotHigherNoValue: '该昵称已有更高或相同成绩，本次不能覆盖。',
+      recordWillReplace: '该昵称已有旧记录，将用更高分 {newScore} 覆盖 {oldScore}。',
+      validateFailed: '记录检查失败，请确认 Firebase 配置和规则。',
+      saveFailedCloud: '保存失败，请确认 Firebase Realtime Database 已启用并且规则已配置。',
+      saveFailedLocal: '保存失败，当前环境可能不支持本地持久化。',
+      cloudConnecting: '云端排行榜连接中...',
+      cloudLoading: '正在从 Firebase 读取共享排行榜。',
+      leaderboardConfigHint: '请先检查 firebase-config.js 和数据库规则配置。',
+      leaderboardEmpty: '还没有记录，先完成一局并保存吧。',
+      leaderboardEmptyCloud: '云端榜单还没有记录。保存后，所有访问这个网址的玩家都会看到它。',
+      leaderboardEmptyLocal: '点击“保存记录”后，这里会显示完整结算表。',
+      leaderboardDetailEmpty: '点击一条记录查看详细结算。',
+      firebaseScriptsMissing: 'Firebase 脚本未成功加载',
+      firebaseConfigMissing: 'Firebase 配置缺少 {key}',
+      firebaseInitFailed: 'Firebase 初始化失败',
+      firebaseSyncFailed: '云端排行榜同步失败',
+      hintReleaseMiracle: '觉得太难就松手吧，可能会引发奇迹喔',
+      unknownSavedAt: '保存时间未知',
+      phaseLabel: 'PHASE {phase}',
+      languageButton: 'Language-{code}',
+    },
+    en: {
+      pageLang: 'en',
+      startKicker: 'LOCAL SIMULATION BUILD',
+      startTitle: 'PHASE-0',
+      startDescription: 'Single-target suppression test.<br />Drag to maneuver, release for low-speed observation.<br />Auto-fire is enabled. The hitbox is at the center of the craft.',
+      controlMove: 'DRAG / MOVE',
+      controlObserve: 'RELEASE / LOW-SPEED OBSERVATION',
+      controlHitbox: 'POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE',
+      startBtn: 'START SIMULATION',
+      menuLeaderboardBtn: 'LEADERBOARD',
+      resultKicker: 'SIMULATION RESULT',
+      victoryTitle: 'TARGET ELIMINATED',
+      defeatTitle: 'SIMULATION ABORTED',
+      saveRecordBtn: 'SAVE RECORD',
+      saveRecordSaved: 'RECORD SAVED',
+      resultLeaderboardBtn: 'VIEW LEADERBOARD',
+      restartBtn: 'REDEPLOY',
+      leaderboardKicker: 'RANKING ARCHIVE',
+      leaderboardTitle: 'LEADERBOARD',
+      leaderboardHint: 'Tap an entry to view the full result sheet.',
+      leaderboardExitBtn: 'EXIT',
+      leaderboardDetailBackBtn: 'BACK TO BOARD',
+      saveKicker: 'SAVE RECORD',
+      saveTitle: 'SAVE RECORD',
+      saveCopy: 'Enter a nickname to save this full result sheet.',
+      savePlaceholder: 'Enter nickname',
+      saveConfirmBtn: 'CONFIRM SAVE',
+      saveCancelBtn: 'CANCEL',
+      saveHintCloud: 'Your nickname will appear on the shared global leaderboard',
+      saveHintLocal: 'Your nickname will appear on this browser’s local leaderboard',
+      savingStatus: 'Saving score...',
+      checkingCloudName: 'Checking nickname on the cloud board...',
+      inputNameFirst: 'Enter a nickname before saving.',
+      noExistingCloud: 'This nickname has no record yet. Saving will create a new leaderboard entry.',
+      noExistingLocal: 'This nickname has no record yet. Saving will write to this browser’s local leaderboard.',
+      scoreNotHigher: 'This nickname already has an equal or higher score ({score}). This run cannot overwrite it.',
+      scoreNotHigherNoValue: 'This nickname already has an equal or higher score. This run cannot overwrite it.',
+      recordWillReplace: 'This nickname already has a record. The higher score {newScore} will overwrite {oldScore}.',
+      validateFailed: 'Record check failed. Please verify your Firebase config and rules.',
+      saveFailedCloud: 'Save failed. Please make sure Firebase Realtime Database is enabled and the rules are configured.',
+      saveFailedLocal: 'Save failed. Local persistence may not be available in the current environment.',
+      cloudConnecting: 'Connecting to the cloud leaderboard...',
+      cloudLoading: 'Loading the shared leaderboard from Firebase.',
+      leaderboardConfigHint: 'Please check firebase-config.js and your database rules.',
+      leaderboardEmpty: 'No records yet. Finish a run and save one first.',
+      leaderboardEmptyCloud: 'The cloud board is still empty. Once you save, everyone visiting this URL will see it.',
+      leaderboardEmptyLocal: 'After tapping “Save Record”, the full result sheet will appear here.',
+      leaderboardDetailEmpty: 'Tap an entry to view the full result sheet.',
+      firebaseScriptsMissing: 'Firebase scripts failed to load',
+      firebaseConfigMissing: 'Firebase config is missing {key}',
+      firebaseInitFailed: 'Firebase initialization failed',
+      firebaseSyncFailed: 'Cloud leaderboard sync failed',
+      hintReleaseMiracle: 'If it feels too hard, release control. A miracle might happen.',
+      unknownSavedAt: 'Saved time unavailable',
+      phaseLabel: 'PHASE {phase}',
+      languageButton: 'Language-{code}',
+    },
+    ja: {
+      pageLang: 'ja',
+      startKicker: 'LOCAL SIMULATION BUILD',
+      startTitle: 'PHASE-0',
+      startDescription: '単体制圧試験。<br />ドラッグで機動、離すと低速観測へ移行。<br />自動射撃。判定点は機体中央にあります。',
+      controlMove: 'DRAG / MOVE',
+      controlObserve: 'RELEASE / LOW-SPEED OBSERVATION',
+      controlHitbox: 'POINT HITBOX / GRAZE SCORING / 5 PETAL LIFE',
+      startBtn: '試験開始',
+      menuLeaderboardBtn: 'ランキング',
+      resultKicker: 'シミュレーション結果',
+      victoryTitle: '目標排除',
+      defeatTitle: 'シミュレーション中断',
+      saveRecordBtn: '記録を保存',
+      saveRecordSaved: '保存済み',
+      resultLeaderboardBtn: 'ランキングを見る',
+      restartBtn: '再展開',
+      leaderboardKicker: 'RANKING ARCHIVE',
+      leaderboardTitle: 'ランキング',
+      leaderboardHint: '項目をタップすると詳細なリザルトを表示します。',
+      leaderboardExitBtn: '終了',
+      leaderboardDetailBackBtn: 'ランキングへ戻る',
+      saveKicker: 'SAVE RECORD',
+      saveTitle: '記録を保存',
+      saveCopy: 'ニックネームを入力して今回の詳細リザルトを保存します。',
+      savePlaceholder: 'ニックネーム入力',
+      saveConfirmBtn: '保存する',
+      saveCancelBtn: 'キャンセル',
+      saveHintCloud: 'ニックネームは共有ランキングに表示されます',
+      saveHintLocal: 'ニックネームはこのブラウザのローカルランキングに表示されます',
+      savingStatus: 'スコアを保存しています...',
+      checkingCloudName: 'クラウド上のニックネームを確認しています...',
+      inputNameFirst: '保存する前にニックネームを入力してください。',
+      noExistingCloud: 'このニックネームの記録はまだありません。保存すると新しいランキング記録が作成されます。',
+      noExistingLocal: 'このニックネームの記録はまだありません。保存するとこのブラウザのローカルランキングに書き込まれます。',
+      scoreNotHigher: 'このニックネームには同点以上の記録（{score}）があります。今回の結果では上書きできません。',
+      scoreNotHigherNoValue: 'このニックネームには同点以上の記録があります。今回の結果では上書きできません。',
+      recordWillReplace: 'このニックネームには既存記録があります。より高い {newScore} で {oldScore} を上書きします。',
+      validateFailed: '記録の確認に失敗しました。Firebase の設定とルールを確認してください。',
+      saveFailedCloud: '保存に失敗しました。Firebase Realtime Database が有効で、ルールが設定されているか確認してください。',
+      saveFailedLocal: '保存に失敗しました。現在の環境ではローカル保存が利用できない可能性があります。',
+      cloudConnecting: 'クラウドランキングに接続中...',
+      cloudLoading: 'Firebase から共有ランキングを読み込んでいます。',
+      leaderboardConfigHint: 'firebase-config.js とデータベースルールを確認してください。',
+      leaderboardEmpty: 'まだ記録がありません。まずは 1 回クリアして保存してください。',
+      leaderboardEmptyCloud: 'クラウドランキングはまだ空です。保存すると、この URL を訪れた全員に表示されます。',
+      leaderboardEmptyLocal: '「記録を保存」を押すと、ここに詳細リザルトが表示されます。',
+      leaderboardDetailEmpty: '1 件タップして詳細リザルトを表示します。',
+      firebaseScriptsMissing: 'Firebase スクリプトの読み込みに失敗しました',
+      firebaseConfigMissing: 'Firebase 設定に {key} がありません',
+      firebaseInitFailed: 'Firebase の初期化に失敗しました',
+      firebaseSyncFailed: 'クラウドランキングの同期に失敗しました',
+      hintReleaseMiracle: '難しいと感じたら、操作を離してみて。奇跡が起きるかも。',
+      unknownSavedAt: '保存時刻不明',
+      phaseLabel: 'PHASE {phase}',
+      languageButton: 'Language-{code}',
+    },
+  };
 
   const state = {
+    language: loadStoredLanguage(),
     running: false,
     startTime: 0,
     elapsed: 0,
@@ -117,6 +426,8 @@
     leaderboardMode: 'local',
     leaderboardReady: false,
     leaderboardError: '',
+    leaderboardErrorKey: '',
+    leaderboardErrorValues: {},
     leaderboardRecords: [],
     leaderboardSyncStop: null,
     saveNameCheckToken: 0,
@@ -175,7 +486,151 @@
     },
   };
 
+  const uiTextNodes = {
+    startKicker: document.getElementById('startKicker'),
+    startTitle: document.getElementById('startTitle'),
+    startDescription: document.getElementById('startDescription'),
+    controlMove: document.getElementById('controlMove'),
+    controlObserve: document.getElementById('controlObserve'),
+    controlHitbox: document.getElementById('controlHitbox'),
+    leaderboardKicker: document.getElementById('leaderboardKicker'),
+    leaderboardTitle: document.getElementById('leaderboardTitle'),
+    saveKicker: document.getElementById('saveKicker'),
+    saveTitle: document.getElementById('saveTitle'),
+    saveCopy: document.getElementById('saveCopy'),
+  };
+
   const leaderboardClient = createLeaderboardClient();
+
+  function loadStoredLanguage() {
+    try {
+      const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      return SUPPORTED_LANGUAGES.includes(stored) ? stored : 'zh-CN';
+    } catch (error) {
+      return 'zh-CN';
+    }
+  }
+
+  function getLanguagePack(language = state.language) {
+    return I18N[SUPPORTED_LANGUAGES.includes(language) ? language : 'zh-CN'];
+  }
+
+  function t(key, values = {}) {
+    const pack = getLanguagePack();
+    const fallback = I18N['zh-CN'];
+    const template = pack[key] ?? fallback[key] ?? key;
+
+    return String(template).replace(/\{(\w+)\}/g, (_, token) => String(values[token] ?? ''));
+  }
+
+  function getResultLabel(labelKey) {
+    const entry = RESULT_LABELS[labelKey];
+    if (!entry) return labelKey;
+    return entry[state.language] ?? entry['zh-CN'] ?? labelKey;
+  }
+
+  function getVictoryTitle(victory) {
+    return victory ? t('victoryTitle') : t('defeatTitle');
+  }
+
+  function setLeaderboardError(key = '', values = {}) {
+    state.leaderboardErrorKey = key;
+    state.leaderboardErrorValues = values;
+    state.leaderboardError = key ? t(key, values) : '';
+  }
+
+  function refreshLeaderboardErrorMessage() {
+    state.leaderboardError = state.leaderboardErrorKey
+      ? t(state.leaderboardErrorKey, state.leaderboardErrorValues)
+      : '';
+  }
+
+  function localizeLanguageBadge() {
+    languageBtn.textContent = t('languageButton', {
+      code: LANGUAGE_BADGE[state.language] || 'CN',
+    });
+  }
+
+  function applyStaticTranslations() {
+    const pack = getLanguagePack();
+
+    document.documentElement.lang = pack.pageLang || state.language;
+    uiTextNodes.startKicker.textContent = pack.startKicker;
+    uiTextNodes.startTitle.textContent = pack.startTitle;
+    uiTextNodes.startDescription.innerHTML = pack.startDescription;
+    uiTextNodes.controlMove.textContent = pack.controlMove;
+    uiTextNodes.controlObserve.textContent = pack.controlObserve;
+    uiTextNodes.controlHitbox.textContent = pack.controlHitbox;
+    uiTextNodes.leaderboardKicker.textContent = pack.leaderboardKicker;
+    uiTextNodes.leaderboardTitle.textContent = pack.leaderboardTitle;
+    uiTextNodes.saveKicker.textContent = pack.saveKicker;
+    uiTextNodes.saveTitle.textContent = pack.saveTitle;
+    uiTextNodes.saveCopy.textContent = pack.saveCopy;
+    startBtn.textContent = pack.startBtn;
+    menuLeaderboardBtn.textContent = pack.menuLeaderboardBtn;
+    resultLeaderboardBtn.textContent = pack.resultLeaderboardBtn;
+    restartBtn.textContent = pack.restartBtn;
+    leaderboardExitBtn.textContent = pack.leaderboardExitBtn;
+    leaderboardDetailBackBtn.textContent = pack.leaderboardDetailBackBtn;
+    confirmSaveBtn.textContent = pack.saveConfirmBtn;
+    cancelSaveBtn.textContent = pack.saveCancelBtn;
+    saveNameInput.placeholder = pack.savePlaceholder;
+    localizeLanguageBadge();
+  }
+
+  function applyLanguage(language, { rerender = true } = {}) {
+    state.language = SUPPORTED_LANGUAGES.includes(language) ? language : 'zh-CN';
+
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language);
+    } catch (error) {
+      // Ignore storage failures and keep the language for this session.
+    }
+
+    refreshLeaderboardErrorMessage();
+    applyStaticTranslations();
+    updateSaveButtonState();
+
+    if (state.lastResult) {
+      renderResult(state.lastResult);
+    } else {
+      resultKicker.textContent = t('resultKicker');
+      resultTitle.textContent = t('victoryTitle');
+    }
+
+    saveNameStatus.textContent = state.saveSubmitting ? t('savingStatus') : getSaveOverlayHint();
+    saveNameStatus.className = 'input-hint';
+
+    if (rerender) {
+      renderLeaderboard(state.selectedLeaderboardId);
+    } else {
+      leaderboardDetail.textContent = t('leaderboardHint');
+    }
+
+    if (saveOverlay.classList.contains('visible') && !state.saveSubmitting && sanitizePlayerName(saveNameInput.value)) {
+      void updateSaveNameStatus();
+    }
+
+    updateLanguageButtonVisibility();
+  }
+
+  function cycleLanguage() {
+    const currentIndex = SUPPORTED_LANGUAGES.indexOf(state.language);
+    const nextLanguage = SUPPORTED_LANGUAGES[(currentIndex + 1) % SUPPORTED_LANGUAGES.length];
+    applyLanguage(nextLanguage);
+  }
+
+  function updateLanguageButtonVisibility() {
+    const shouldShow = [
+      overlay,
+      resultOverlay,
+      leaderboardOverlay,
+      leaderboardDetailOverlay,
+      saveOverlay,
+    ].some((element) => element.classList.contains('visible'));
+
+    languageBtn.classList.toggle('hidden', !shouldShow);
+  }
 
   function initStars() {
     state.stars = Array.from({ length: 78 }, () => ({
@@ -301,7 +756,7 @@
     state.bomb.freezeFxTime = 0;
     state.bomb.cancelFx = 0;
     state.bomb.pendingVictory = false;
-    phaseText.textContent = 'PHASE 1';
+    phaseText.textContent = getPhaseLabel();
     initStars();
   }
 
@@ -335,7 +790,7 @@
         startSync() {
           state.leaderboardMode = 'local';
           state.leaderboardReady = true;
-          state.leaderboardError = '';
+          setLeaderboardError();
           state.leaderboardRecords = loadLocalLeaderboardFromStorage();
           return () => {};
         },
@@ -383,7 +838,7 @@
         startSync() {
           state.leaderboardMode = 'firebase';
           state.leaderboardReady = true;
-          state.leaderboardError = 'Firebase 脚本未成功加载';
+          setLeaderboardError('firebaseScriptsMissing');
           state.leaderboardRecords = [];
           return () => {};
         },
@@ -404,7 +859,7 @@
         startSync() {
           state.leaderboardMode = 'firebase';
           state.leaderboardReady = true;
-          state.leaderboardError = `Firebase 配置缺少 ${missingKey}`;
+          setLeaderboardError('firebaseConfigMissing', { key: missingKey });
           state.leaderboardRecords = [];
           return () => {};
         },
@@ -432,7 +887,7 @@
         startSync() {
           state.leaderboardMode = 'firebase';
           state.leaderboardReady = true;
-          state.leaderboardError = 'Firebase 初始化失败';
+          setLeaderboardError('firebaseInitFailed');
           state.leaderboardRecords = [];
           return () => {};
         },
@@ -450,7 +905,7 @@
       startSync() {
         state.leaderboardMode = 'firebase';
         state.leaderboardReady = false;
-        state.leaderboardError = '';
+        setLeaderboardError();
 
         const recordsQuery = database
           .ref(paths.records)
@@ -469,7 +924,7 @@
               .sort(sortLeaderboardRecords)
               .slice(0, MAX_LEADERBOARD_RECORDS);
             state.leaderboardReady = true;
-            state.leaderboardError = '';
+            setLeaderboardError();
 
             if (leaderboardOverlay.classList.contains('visible')) {
               renderLeaderboard(state.selectedLeaderboardId);
@@ -483,7 +938,7 @@
         const errorHandler = (error) => {
             console.warn('Failed to sync Firebase leaderboard.', error);
             state.leaderboardReady = true;
-            state.leaderboardError = '云端排行榜同步失败';
+            setLeaderboardError('firebaseSyncFailed');
 
             if (leaderboardOverlay.classList.contains('visible')) {
               renderLeaderboard(state.selectedLeaderboardId);
@@ -565,6 +1020,7 @@
   function setOverlayVisibility(element, visible) {
     element.classList.toggle('hidden', !visible);
     element.classList.toggle('visible', visible);
+    updateLanguageButtonVisibility();
   }
 
   function setUiTapLock(duration = 220) {
@@ -619,7 +1075,7 @@
     if (!name) {
       return {
         ok: false,
-        message: '请输入昵称后再保存。',
+        message: t('inputNameFirst'),
         tone: 'error',
       };
     }
@@ -639,8 +1095,8 @@
         return {
           ok: true,
           message: state.leaderboardMode === 'firebase'
-            ? '该昵称还没有记录，保存后会创建新的排行榜成绩。'
-            : '该昵称还没有记录，保存后会写入当前浏览器的本地排行榜。',
+            ? t('noExistingCloud')
+            : t('noExistingLocal'),
           tone: 'ok',
         };
       }
@@ -648,21 +1104,24 @@
       if (existing.finalScore >= state.lastResult.finalScore) {
         return {
           ok: false,
-          message: `该昵称已有更高或相同成绩（${formatScore(existing.finalScore)}），本次不能覆盖。`,
+          message: t('scoreNotHigher', { score: formatScore(existing.finalScore) }),
           tone: 'error',
         };
       }
 
       return {
         ok: true,
-        message: `该昵称已有旧记录，将用更高分 ${formatScore(state.lastResult.finalScore)} 覆盖 ${formatScore(existing.finalScore)}。`,
+        message: t('recordWillReplace', {
+          newScore: formatScore(state.lastResult.finalScore),
+          oldScore: formatScore(existing.finalScore),
+        }),
         tone: 'ok',
       };
     } catch (error) {
       console.warn('Failed to validate leaderboard record.', error);
       return {
         ok: false,
-        message: '记录检查失败，请确认 Firebase 配置和规则。',
+        message: t('validateFailed'),
         tone: 'error',
       };
     }
@@ -673,7 +1132,7 @@
     const name = sanitizePlayerName(saveNameInput.value);
 
     if (state.saveSubmitting) {
-      saveNameStatus.textContent = '正在保存成绩...';
+      saveNameStatus.textContent = t('savingStatus');
       saveNameStatus.className = 'input-hint';
       confirmSaveBtn.disabled = true;
       return { ok: false, message: 'saving' };
@@ -687,7 +1146,7 @@
     }
 
     if (state.leaderboardMode === 'firebase' && !state.leaderboardError) {
-      saveNameStatus.textContent = '正在检查云端昵称占用...';
+      saveNameStatus.textContent = t('checkingCloudName');
       saveNameStatus.className = 'input-hint';
       confirmSaveBtn.disabled = true;
     }
@@ -711,10 +1170,10 @@
   function getSaveOverlayHint() {
     if (state.leaderboardMode === 'firebase') {
       if (state.leaderboardError) return state.leaderboardError;
-      return '昵称将显示在全站共享排行榜中';
+      return t('saveHintCloud');
     }
 
-    return '昵称将显示在当前浏览器的本地排行榜中';
+    return t('saveHintLocal');
   }
 
   function buildRunResult(victory) {
@@ -732,31 +1191,31 @@
 
     return {
       victory,
-      title: victory ? '目标排除' : '模拟中断',
+      title: getVictoryTitle(victory),
       finalScore,
       saved: false,
       details: [
-        { label: '基础得分', value: formatScore(rawScore) },
-        { label: '通关奖励', value: formatScore(clearBonus) },
-        { label: '战斗时间', value: `${state.elapsed.toFixed(1)}s` },
-        { label: '擦弹帧数', value: Math.floor(state.grazeFrames) },
-        { label: '擦弹触发', value: state.grazeEntries },
-        { label: '峰值倍率', value: `x${state.peakRate.toFixed(2)}` },
-        { label: '炸弹发动', value: state.bomb.uses },
-        { label: '决死成功', value: state.deathbombs },
-        { label: '时间惩罚', value: formatScore(timePenalty) },
-        { label: '残机倍率', value: `x${lifeMultiplier.toFixed(2)}` },
-        { label: '无伤倍率', value: `x${noHitMultiplier.toFixed(2)}` },
-        { label: '炸弹修正', value: `x${bombMultiplier.toFixed(2)}` },
-        { label: '决死修正', value: `x${deathbombMultiplier.toFixed(2)}` },
-        { label: '最终得分', value: formatScore(finalScore), total: true },
+        { key: 'baseScore', value: formatScore(rawScore) },
+        { key: 'clearBonus', value: formatScore(clearBonus) },
+        { key: 'battleTime', value: `${state.elapsed.toFixed(1)}s` },
+        { key: 'grazeFrames', value: Math.floor(state.grazeFrames) },
+        { key: 'grazeEntries', value: state.grazeEntries },
+        { key: 'peakRate', value: `x${state.peakRate.toFixed(2)}` },
+        { key: 'bombUses', value: state.bomb.uses },
+        { key: 'deathbombSuccess', value: state.deathbombs },
+        { key: 'timePenalty', value: formatScore(timePenalty) },
+        { key: 'lifeMultiplier', value: `x${lifeMultiplier.toFixed(2)}` },
+        { key: 'noHitMultiplier', value: `x${noHitMultiplier.toFixed(2)}` },
+        { key: 'bombAdjust', value: `x${bombMultiplier.toFixed(2)}` },
+        { key: 'deathbombAdjust', value: `x${deathbombMultiplier.toFixed(2)}` },
+        { key: 'finalScore', value: formatScore(finalScore), total: true },
       ],
     };
   }
 
   function renderResult(result) {
-    resultKicker.textContent = '模拟结果';
-    resultTitle.textContent = result.title;
+    resultKicker.textContent = t('resultKicker');
+    resultTitle.textContent = getVictoryTitle(result.victory);
     resultStats.innerHTML = renderResultGrid(result.details);
     updateSaveButtonState();
     hideSaveOverlay();
@@ -837,9 +1296,7 @@
         ? record.nameKey
         : normalizeNameKey(normalizedName),
       victory: Boolean(record.victory),
-      title: typeof record.title === 'string' && record.title
-        ? record.title
-        : (record.victory ? '目标排除' : '模拟中断'),
+      title: getVictoryTitle(Boolean(record.victory)),
       finalScore,
       sortScore: Number.isFinite(record.sortScore)
         ? Math.max(0, Math.floor(record.sortScore))
@@ -852,8 +1309,14 @@
   function normalizeLeaderboardDetail(row) {
     if (!row || typeof row !== 'object') return null;
 
+    const normalizedLabel = String(row.label ?? '').trim();
+    const normalizedKey = typeof row.key === 'string' && row.key
+      ? row.key
+      : LEGACY_RESULT_LABEL_TO_KEY[normalizedLabel];
+
     return {
-      label: String(row.label ?? '').trim(),
+      key: normalizedKey || '',
+      label: normalizedLabel,
       value: String(row.value ?? '').trim(),
       total: Boolean(row.total),
     };
@@ -868,7 +1331,7 @@
   function updateSaveButtonState() {
     const saved = Boolean(state.lastResult?.saved);
     saveRecordBtn.disabled = !state.lastResult || saved;
-    saveRecordBtn.textContent = saved ? '记录已保存' : '保存记录';
+    saveRecordBtn.textContent = saved ? t('saveRecordSaved') : t('saveRecordBtn');
   }
 
   function saveCurrentResult() {
@@ -896,7 +1359,7 @@
 
     state.saveSubmitting = true;
     state.saveNameCheckToken += 1;
-    saveNameStatus.textContent = '正在保存成绩...';
+    saveNameStatus.textContent = t('savingStatus');
     saveNameStatus.className = 'input-hint';
     confirmSaveBtn.disabled = true;
 
@@ -918,8 +1381,8 @@
       if (error?.code === 'SCORE_NOT_HIGHER') {
         const existingScore = error?.existingRecord?.finalScore;
         saveNameStatus.textContent = Number.isFinite(existingScore)
-            ? `该昵称已有更高或相同成绩（${formatScore(existingScore)}），本次不能覆盖。`
-            : '该昵称已有更高或相同成绩，本次不能覆盖。';
+            ? t('scoreNotHigher', { score: formatScore(existingScore) })
+            : t('scoreNotHigherNoValue');
         saveNameStatus.className = 'input-hint error';
         confirmSaveBtn.disabled = false;
         saveNameInput.focus();
@@ -929,8 +1392,8 @@
       confirmSaveBtn.disabled = false;
       window.alert(
         state.leaderboardMode === 'firebase'
-          ? '保存失败，请确认 Firebase Realtime Database 已启用并且规则已配置。'
-          : '保存失败，当前环境可能不支持本地持久化。'
+          ? t('saveFailedCloud')
+          : t('saveFailedLocal')
       );
     }
   }
@@ -940,8 +1403,8 @@
 
     if (state.leaderboardMode === 'firebase' && !state.leaderboardReady && !records.length) {
       state.selectedLeaderboardId = null;
-      leaderboardList.innerHTML = '<div class="leaderboard-empty">云端排行榜连接中...</div>';
-      leaderboardDetail.textContent = '正在从 Firebase 读取共享排行榜。';
+      leaderboardList.innerHTML = `<div class="leaderboard-empty">${escapeHtml(t('cloudConnecting'))}</div>`;
+      leaderboardDetail.textContent = t('cloudLoading');
       hideLeaderboardDetailOverlay();
       return;
     }
@@ -949,14 +1412,14 @@
     if (state.leaderboardMode === 'firebase' && state.leaderboardError && !records.length) {
       state.selectedLeaderboardId = null;
       leaderboardList.innerHTML = `<div class="leaderboard-empty">${escapeHtml(state.leaderboardError)}</div>`;
-      leaderboardDetail.textContent = '请先检查 firebase-config.js 和数据库规则配置。';
+      leaderboardDetail.textContent = t('leaderboardConfigHint');
       hideLeaderboardDetailOverlay();
       return;
     }
 
     if (!records.length) {
       state.selectedLeaderboardId = null;
-      leaderboardList.innerHTML = '<div class="leaderboard-empty">还没有记录，先完成一局并保存吧。</div>';
+      leaderboardList.innerHTML = `<div class="leaderboard-empty">${escapeHtml(t('leaderboardEmpty'))}</div>`;
       leaderboardDetail.textContent = getLeaderboardEmptyDetail();
       hideLeaderboardDetailOverlay();
       return;
@@ -972,7 +1435,7 @@
       .join('');
 
     const activeRecord = records.find((record) => record.id === activeId) || records[0];
-    leaderboardDetail.textContent = '点击列表项查看详细结算。';
+    leaderboardDetail.textContent = t('leaderboardHint');
 
     if (leaderboardDetailOverlay.classList.contains('visible')) {
       showLeaderboardDetailOverlay(activeRecord);
@@ -1002,7 +1465,7 @@
 
   function buildLeaderboardDetail(record) {
     if (!record) {
-      return '<div class="leaderboard-empty">点击一条记录查看详细结算。</div>';
+      return `<div class="leaderboard-empty">${escapeHtml(t('leaderboardDetailEmpty'))}</div>`;
     }
 
     const statusClass = record.victory ? 'victory' : 'fail';
@@ -1036,10 +1499,10 @@
 
   function getLeaderboardEmptyDetail() {
     if (state.leaderboardMode === 'firebase') {
-      return '云端榜单还没有记录。保存后，所有访问这个网址的玩家都会看到它。';
+      return t('leaderboardEmptyCloud');
     }
 
-    return '点击“保存记录”后，这里会显示完整结算表。';
+    return t('leaderboardEmptyLocal');
   }
 
   function returnToStartScreen() {
@@ -2301,7 +2764,7 @@
       if (state.bomb.charge >= BOMB_CHARGE_TIME) state.bomb.ready = true;
       if (!wasReady && state.bomb.ready && !state.hint.shown) {
         state.hint.shown = true;
-        showHint('觉得太难就松手吧，可能会引发奇迹喔', 5.2);
+        showHint(t('hintReleaseMiracle'), 5.2);
       }
     } else {
       state.bomb.charge = 0;
@@ -3092,6 +3555,8 @@
       ctx.fillRect(Math.round(s.x), Math.round(s.y), s.s, s.s);
     }
 
+    const hudMetrics = getHudLayoutMetrics();
+
     drawBoss();
     drawBullets();
     drawFreezeChargeFx();
@@ -3101,7 +3566,7 @@
     drawLifeFlowFx();
     drawPlayer();
     drawVictoryFx();
-    drawSakuraLives();
+    drawSakuraLives(hudMetrics);
 
     ctx.restore();
 
@@ -3120,6 +3585,7 @@
 
     bossFill.style.width = `${(state.boss.hp / state.boss.maxHp) * 100}%`;
     phaseText.textContent = getPhaseLabel();
+    syncScoreCornerLayout(hudMetrics);
     scoreCorner.textContent = formatScore(Math.max(0, Math.floor(state.score)));
   }
 
@@ -3192,7 +3658,7 @@
   }
 
   function getPhaseLabel() {
-    return `PHASE ${state.phase}`;
+    return t('phaseLabel', { phase: state.phase });
   }
 
   function getVictoryPose() {
@@ -4543,13 +5009,13 @@
     ctx.restore();
   }
 
-  function drawSakuraLives() {
+  function drawSakuraLives(hudMetrics = getHudLayoutMetrics()) {
     const critical = state.running && state.player.hp === 1;
     const criticalPulse = critical ? (0.5 + 0.5 * Math.sin(performance.now() * 0.0105)) : 0;
 
-    const cx = W - 56;
-    const cy = 58;
-    const size = 31 + state.sakuraPulse * 2.4 + criticalPulse * 1.8;
+    const cx = hudMetrics.lifeCx;
+    const cy = hudMetrics.lifeCy;
+    const size = hudMetrics.lifeSize + state.sakuraPulse * 2.4 + criticalPulse * 1.8;
     const jitterFactor = state.sakuraShock + (critical ? criticalPulse * 0.35 : 0);
     const jitterX = (Math.random() - 0.5) * jitterFactor * 2.4;
     const jitterY = (Math.random() - 0.5) * jitterFactor * 2.4;
@@ -4606,13 +5072,13 @@
       ctx.save();
       ctx.rotate((Math.PI * 2 * i) / MAX_LIVES);
       ctx.strokeStyle = `rgba(255,255,255,${i < state.player.hp ? (critical ? 0.72 + criticalPulse * 0.16 : 0.65) : 0.18})`;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = hudMetrics.lifeLineWidth;
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(0, -size * 0.58);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(0, -size * 0.58, 2.4, 0, Math.PI * 2);
+      ctx.arc(0, -size * 0.58, hudMetrics.lifeNodeRadius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,255,255,${i < state.player.hp ? (critical ? 0.95 + criticalPulse * 0.05 : 0.9) : 0.2})`;
       ctx.fill();
       ctx.restore();
@@ -4620,19 +5086,19 @@
 
     ctx.fillStyle = `rgba(255,255,255,${critical ? 0.84 + criticalPulse * 0.14 : 0.78 + state.sakuraPulse * 0.18})`;
     ctx.beginPath();
-    ctx.arc(0, 0, 12 + state.sakuraPulse * 1.2 + criticalPulse * 1.0, 0, Math.PI * 2);
+    ctx.arc(0, 0, hudMetrics.lifeCoreRadius + state.sakuraPulse * 1.2 + criticalPulse * 1.0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.arc(0, 0, 7.6, 0, Math.PI * 2);
+    ctx.arc(0, 0, hudMetrics.lifeCoreRadius * 0.64, 0, Math.PI * 2);
     ctx.fill();
 
     if (state.sakuraPulse > 0 || critical) {
       const ringAlpha = state.sakuraPulse > 0
         ? state.sakuraPulse * 0.6
         : 0.22 + criticalPulse * 0.28;
-      const ringRadius = 12 + (state.sakuraPulse > 0 ? (1 - state.sakuraPulse) * 10 : 6 + criticalPulse * 6);
+      const ringRadius = hudMetrics.lifeRingRadius + (state.sakuraPulse > 0 ? (1 - state.sakuraPulse) * 10 : 6 + criticalPulse * 6);
       ctx.strokeStyle = `rgba(255,255,255,${ringAlpha})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -4727,6 +5193,49 @@
     }
   }
 
+  function getHudLayoutMetrics() {
+    const rect = canvas.getBoundingClientRect();
+    const shellRect = gameShell.getBoundingClientRect();
+    const displayScale = clamp(rect.width / W, 0.54, 1);
+    const compact = clamp((0.78 - displayScale) / 0.24, 0, 1);
+    const insetX = Math.max(10, rect.width * 0.032);
+    const insetY = Math.max(10, rect.height * 0.02);
+
+    return {
+      compact,
+      scoreLeft: Math.round(rect.left - shellRect.left + insetX),
+      scoreTop: Math.round(rect.top - shellRect.top + insetY),
+      scoreFontSize: Math.round(12 + displayScale * 6 - compact),
+      scoreMaxWidth: Math.round(Math.max(104, rect.width * 0.4)),
+      lifeCx: W - (58 + compact * 26),
+      lifeCy: 58 + compact * 16,
+      lifeSize: 31 - compact * 4.5,
+      lifeLineWidth: 1.6 - compact * 0.18,
+      lifeNodeRadius: 2.4 - compact * 0.28,
+      lifeCoreRadius: 12 - compact * 1.2,
+      lifeRingRadius: 12 - compact * 1.2,
+    };
+  }
+
+  function syncScoreCornerLayout(metrics) {
+    if (!metrics) return;
+
+    const layoutKey = [
+      metrics.scoreLeft,
+      metrics.scoreTop,
+      metrics.scoreFontSize,
+      metrics.scoreMaxWidth,
+    ].join('|');
+
+    if (scoreCorner.dataset.layoutKey === layoutKey) return;
+
+    scoreCorner.style.left = `${metrics.scoreLeft}px`;
+    scoreCorner.style.top = `${metrics.scoreTop}px`;
+    scoreCorner.style.fontSize = `${metrics.scoreFontSize}px`;
+    scoreCorner.style.maxWidth = `${metrics.scoreMaxWidth}px`;
+    scoreCorner.dataset.layoutKey = layoutKey;
+  }
+
   function releasePointer() {
     state.pointerReleaseCount += 1;
     state.pointerActive = false;
@@ -4778,6 +5287,9 @@
       hideLeaderboardDetailOverlay();
     }
   });
+  languageBtn.addEventListener('click', () => {
+    cycleLanguage();
+  });
   confirmSaveBtn.addEventListener('click', confirmSaveCurrentResult);
   cancelSaveBtn.addEventListener('click', hideSaveOverlay);
   saveNameInput.addEventListener('input', updateSaveNameStatus);
@@ -4797,6 +5309,11 @@
     return String(Math.max(0, Math.floor(value))).padStart(6, '0');
   }
 
+  function resolveResultRowLabel(row) {
+    if (row?.key) return getResultLabel(row.key);
+    return String(row?.label ?? '').trim();
+  }
+
   function buildResultRow(label, value, total = false) {
     return `<div class="result-row${total ? ' total' : ''}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
   }
@@ -4804,7 +5321,7 @@
   function renderResultGrid(rows) {
     return [
       '<div class="result-grid">',
-      ...rows.map((row) => buildResultRow(row.label, row.value, row.total)),
+      ...rows.map((row) => buildResultRow(resolveResultRowLabel(row), row.value, row.total)),
       '</div>',
     ].join('');
   }
@@ -4823,9 +5340,9 @@
 
   function formatSavedAt(timestamp) {
     const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return '保存时间未知';
+    if (Number.isNaN(date.getTime())) return t('unknownSavedAt');
 
-    return date.toLocaleString('zh-CN', {
+    return date.toLocaleString(LANGUAGE_LOCALE[state.language] || 'zh-CN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -4891,7 +5408,9 @@
 
   initLeaderboardSync();
   resetGame();
+  applyLanguage(state.language, { rerender: false });
   updateSaveButtonState();
+  updateLanguageButtonVisibility();
   render();
   requestAnimationFrame(loop);
 })();
