@@ -4,6 +4,16 @@
   --muted: #bdbdbd;
   --panel: rgba(0, 0, 0, 0.82);
   --line: rgba(255, 255, 255, 0.12);
+  --viewport-h: 100vh;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --game-bottom-clearance: calc(var(--safe-bottom) + 28px);
+  --leaderboard-list-max-height: 270px;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --viewport-h: 100svh;
+  }
 }
 
 * {
@@ -30,6 +40,9 @@ body {
 .app {
   width: min(100vw, 520px);
   min-height: 100vh;
+  height: 100vh;
+  min-height: var(--viewport-h);
+  height: var(--viewport-h);
   display: grid;
   grid-template-rows: auto 1fr;
   background:
@@ -74,7 +87,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8px;
+  padding: 8px 8px var(--game-bottom-clearance);
   min-height: 0;
   overflow: hidden;
 }
@@ -85,7 +98,7 @@ canvas {
   height: auto;
   aspect-ratio: 420 / 740;
   max-width: 100%;
-  max-height: calc(100vh - 52px - 16px);
+  max-height: calc(var(--viewport-h) - 52px - var(--game-bottom-clearance) - 8px);
   background: #050505;
   border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
@@ -149,6 +162,43 @@ canvas {
 
 .panel-compact {
   width: min(88%, 340px);
+}
+
+.panel-result {
+  width: min(88%, 348px);
+  gap: 10px;
+  padding: 16px;
+}
+
+.panel-result .btn-stack {
+  gap: 8px;
+}
+
+.panel-result .btn {
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
+.panel-result .result-grid {
+  gap: 6px;
+}
+
+.panel-result .result-row {
+  padding-bottom: 5px;
+  font-size: 12px;
+}
+
+.panel-result .result-row strong {
+  font-size: 13px;
+}
+
+.panel-result .result-row.total {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.panel-result .result-row.total strong {
+  font-size: 16px;
 }
 
 .panel-leaderboard {
@@ -286,6 +336,8 @@ canvas {
   display: grid;
   gap: 6px;
   align-content: start;
+  max-height: var(--leaderboard-list-max-height);
+  overscroll-behavior: contain;
 }
 
 .leaderboard-row {
@@ -299,6 +351,7 @@ canvas {
   align-items: center;
   gap: 10px;
   padding: 10px 8px;
+  min-height: 46px;
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -492,6 +545,11 @@ canvas {
 }
 
 @media (max-width: 460px) {
+  :root {
+    --game-bottom-clearance: calc(var(--safe-bottom) + 34px);
+    --leaderboard-list-max-height: 258px;
+  }
+
   .panel {
     width: min(92%, 360px);
     padding: 16px;
@@ -505,8 +563,13 @@ canvas {
     width: min(96%, 400px);
   }
 
+  .panel-result {
+    width: min(92%, 344px);
+    padding: 14px;
+  }
+
   canvas {
-    max-height: calc(100vh - 48px - 16px);
+    max-height: calc(var(--viewport-h) - 48px - var(--game-bottom-clearance) - 8px);
   }
 
   .corner-score {
@@ -532,5 +595,64 @@ canvas {
 
   .detail-modal-content {
     max-height: min(50dvh, 400px);
+  }
+}
+
+@media (max-height: 820px) {
+  .panel-result {
+    width: min(90%, 338px);
+    gap: 9px;
+    padding: 14px;
+  }
+
+  .panel-result .panel-kicker {
+    font-size: 10px;
+  }
+
+  .panel-result h2 {
+    font-size: 24px;
+  }
+
+  .panel-result .btn {
+    padding: 11px 13px;
+    font-size: 14px;
+  }
+}
+
+@media (max-height: 740px) {
+  .panel-result {
+    width: min(90%, 328px);
+    gap: 8px;
+    padding: 13px;
+  }
+
+  .panel-result h2 {
+    font-size: 21px;
+  }
+
+  .panel-result .result-grid {
+    gap: 4px;
+  }
+
+  .panel-result .result-row {
+    padding-bottom: 4px;
+    font-size: 11px;
+  }
+
+  .panel-result .result-row strong {
+    font-size: 12px;
+  }
+
+  .panel-result .result-row.total {
+    font-size: 13px;
+  }
+
+  .panel-result .result-row.total strong {
+    font-size: 14px;
+  }
+
+  .panel-result .btn {
+    padding: 10px 12px;
+    font-size: 13px;
   }
 }
