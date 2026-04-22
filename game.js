@@ -833,14 +833,6 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       updateSaveButtonState();
       hideSaveOverlay();
 
-      if (state.leaderboardMode === 'firebase') {
-        state.leaderboardRecords = [savedRecord, ...state.leaderboardRecords]
-          .map(normalizeLeaderboardRecord)
-          .filter(Boolean)
-          .sort(sortLeaderboardRecords)
-          .slice(0, MAX_LEADERBOARD_RECORDS);
-      }
-
       renderLeaderboard(savedRecord.id);
       showBaseOverlay(leaderboardOverlay);
     } catch (error) {
