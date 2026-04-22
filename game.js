@@ -501,6 +501,10 @@
     saveCopy: document.getElementById('saveCopy'),
   };
 
+  if (scoreCorner) {
+    scoreCorner.style.display = 'none';
+  }
+
   const leaderboardClient = createLeaderboardClient();
 
   function loadStoredLanguage() {
@@ -1980,8 +1984,8 @@
         bodyHalf: 36,
         innerHalf: 14,
         shellInset: 10,
-        wingAnchorX: 64,
-        wingTipReach: 64,
+        wingAnchorX: 74,
+        wingTipReach: 104,
         wingRootFront: 14,
         wingRootBack: 14,
         wingJointInset: 14,
@@ -3614,6 +3618,7 @@
     drawLifeFlowFx();
     drawPlayer();
     drawVictoryFx();
+    drawScoreHud(hudMetrics);
     drawSakuraLives(hudMetrics);
 
     ctx.restore();
@@ -3633,8 +3638,6 @@
 
     bossFill.style.width = `${(state.boss.hp / state.boss.maxHp) * 100}%`;
     phaseText.textContent = getPhaseLabel();
-    syncScoreCornerLayout(hudMetrics);
-    scoreCorner.textContent = formatScore(Math.max(0, Math.floor(state.score)));
   }
 
   function getScreenOverlayAlpha() {
@@ -3783,10 +3786,10 @@
       ctx.rotate(side * ((state.phase === 4 ? 0.08 : 0.1) + wingTilt * 0.01));
       ctx.beginPath();
       if (state.phase === 4) {
-        ctx.moveTo(side * 14, -22);
+        ctx.moveTo(side * spec.wingRootFront, spec.wingTop);
         ctx.lineTo(side * (spec.wingTipReach + 4), -2);
-        ctx.lineTo(side * 14, 24);
-        ctx.lineTo(side * -8, 6);
+        ctx.lineTo(side * spec.wingRootBack, spec.wingBottom);
+        ctx.lineTo(side * -spec.wingJointInset * 0.57, 6);
       } else {
         ctx.moveTo(side * 10, -18);
         ctx.lineTo(side * spec.wingTipReach, 0);
@@ -5174,6 +5177,26 @@
     }
   }
 
+  function drawScoreHud(hudMetrics = getHudLayoutMetrics()) {
+    const scoreText = formatScore(Math.max(0, Math.floor(state.score)));
+    const fontSize = hudMetrics.scoreCanvasFontSize;
+    const x = hudMetrics.scoreCanvasX;
+    const y = hudMetrics.scoreCanvasY;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.0052);
+    const glow = 0.16 + pulse * 0.08 + state.sakuraPulse * 0.12;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = `700 ${fontSize}px "Courier New", Consolas, monospace`;
+    ctx.letterSpacing = '0.08em';
+    ctx.fillStyle = `rgba(255,255,255,${0.86 + state.sakuraPulse * 0.08})`;
+    ctx.shadowColor = `rgba(255,255,255,${glow})`;
+    ctx.shadowBlur = 12 + state.sakuraPulse * 8;
+    ctx.fillText(scoreText, x, y);
+    ctx.restore();
+  }
+
   function drawPetalShape(x, y, len, width, fill, stroke) {
     ctx.save();
     ctx.translate(x, y);
@@ -5256,6 +5279,9 @@
       scoreTop: Math.round(rect.top - shellRect.top + insetY),
       scoreFontSize: Math.round(12 + displayScale * 6 - compact),
       scoreMaxWidth: Math.round(Math.max(104, rect.width * 0.4)),
+      scoreCanvasX: 18 + compact * 10,
+      scoreCanvasY: 18 + compact * 12,
+      scoreCanvasFontSize: 18 - compact * 2,
       lifeCx: W - (58 + compact * 26),
       lifeCy: 58 + compact * 16,
       lifeSize: 31 - compact * 4.5,
@@ -5268,6 +5294,10 @@
 
   function syncScoreCornerLayout(metrics) {
     if (!metrics) return;
+
+    if (scoreCorner.style.display !== 'none') {
+      scoreCorner.style.display = 'none';
+    }
 
     const layoutKey = [
       metrics.scoreLeft,
