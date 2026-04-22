@@ -26,14 +26,14 @@
   const BOMB_CHARGE_TIME = 5;
   const BOMB_FREEZE_TIME = 5.55;
   const BOMB_FLASH_TIME = 0.12;
-  const BOMB_DETONATE_TIME = 0.22;
-  const BOMB_STALL_TIME = 0.55;
-  const BOMB_CHARGE_STAGE_TIME = 0.58;
-  const BOMB_SNAP_TIME = 0.10;
-  const BOMB_ASSAULT_TIME = 2.45;
+  const BOMB_DETONATE_TIME = 0.20;
+  const BOMB_STALL_TIME = 0.50;
+  const BOMB_CHARGE_STAGE_TIME = 0.54;
+  const BOMB_SNAP_TIME = 0.08;
+  const BOMB_ASSAULT_TIME = 2.22;
   const BOMB_ASSAULT_COLOR_DELAY = 0.68;
   const BOMB_ASSAULT_COLOR_RAMP = 0.58;
-  const BOMB_RECOVERY_TIME = 0.78;
+  const BOMB_RECOVERY_TIME = 0.82;
   const BOMB_CANCEL_FX_TIME = 0.32;
   const DEATH_ANIM_TIME = 2.0;
   const RESPAWN_RISE_TIME = 0.78;
@@ -138,6 +138,7 @@
       trailTick: 0,
       freezeFxTime: 0,
       cancelFx: 0,
+      pendingVictory: false,
     },
   };
 
@@ -260,6 +261,7 @@
     state.bomb.trailTick = 0;
     state.bomb.freezeFxTime = 0;
     state.bomb.cancelFx = 0;
+    state.bomb.pendingVictory = false;
     phaseText.textContent = 'PHASE 1';
     initStars();
   }
@@ -683,12 +685,12 @@
         innerHalf: 14,
         shellInset: 10,
         wingAnchorX: 64,
-        wingTipReach: 109,   // 64 * 1.7 ≈ 108.8
-        wingRootFront: 18,
-        wingRootBack: 18,
-        wingJointInset: 12,
-        wingTop: -26,
-        wingBottom: 28,
+        wingTipReach: 64,
+        wingRootFront: 14,
+        wingRootBack: 14,
+        wingJointInset: 14,
+        wingTop: -22,
+        wingBottom: 24,
         wingYOffset: 4,
         sidePodWidth: 16,
         sidePodHalf: 30,
@@ -702,6 +704,7 @@
         irisHalf: 31,
       };
     }
+
     if (phase === 3) {
       return {
         bodyHalf: 30,
@@ -1391,7 +1394,7 @@
     boss.orbitRadius += (targetRadius - boss.orbitRadius) * 0.08;
     boss.orbitYAmplitude += (targetYAmplitude - boss.orbitYAmplitude) * 0.08;
 
-    if (state.finish.active) {
+    if (state.finish.active || state.bomb.pendingVictory) {
       boss.x = state.finish.x;
       boss.y = state.finish.y;
     } else {
@@ -1622,24 +1625,51 @@
     }
   }
 
+  function queueBombVictory() {
+    if (state.bomb.pendingVictory || state.finish.active) return;
+
+    state.bomb.pendingVictory = true;
+    state.boss.hp = 0;
+    state.boss.damageFlash = 0.36;
+    state.finish.x = state.boss.x;
+    state.finish.y = state.boss.y;
+    state.finish.pose = Math.max(state.finish.pose, 0.22);
+    state.shake = Math.max(state.shake, 0.72);
+    state.killFlash = Math.max(state.killFlash, 0.12);
+    state.invuln = Math.max(state.invuln, 0.9);
+    clearEnemyBullets(true);
+  }
+
   function finishBombSequence() {
+    const queuedVictory = state.bomb.pendingVictory;
+
     state.bomb.active = false;
     state.bomb.stage = 'idle';
     state.bomb.stageTimer = 0;
     state.bomb.damageTick = 0;
     state.bomb.trailTick = 0;
+    state.bomb.freezeFxTime = 0;
+    state.bomb.cancelFx = 0;
     state.timeScale = 1;
     state.nextPattern = Math.max(state.nextPattern, 0.85);
     state.dragAnchor.px = state.player.x;
     state.dragAnchor.py = state.player.y;
     state.dragAnchor.x = state.targetX;
     state.dragAnchor.y = state.targetY;
+    state.bomb.pendingVictory = false;
+
+    if (queuedVictory) {
+      startVictorySequence();
+    }
   }
 
   function updateBombSequence(dt) {
     if (!state.bomb.active) return;
 
     state.bomb.stageTimer += dt;
+    if (state.bomb.pendingVictory && !state.finish.active) {
+      state.finish.pose = Math.min(0.58, state.finish.pose + dt * 0.34);
+    }
     state.timeScale += (1 - state.timeScale) * 0.18;
     state.invuln = Math.max(state.invuln, 0.18);
     clearEnemyBullets(false);
@@ -1749,7 +1779,11 @@
           lifeSpread: 0.10,
           size: 2,
         });
-        if (state.boss.hp <= 0) break;
+        if (state.boss.hp <= 0) {
+          queueBombVictory();
+          setBombStage('recover');
+          break;
+        }
       }
 
       if (state.bomb.stageTimer >= BOMB_ASSAULT_TIME) setBombStage('recover');
@@ -1764,6 +1798,7 @@
   function startVictorySequence() {
     if (state.finish.active) return;
 
+    state.bomb.pendingVictory = false;
     state.finish.x = state.boss.x;
     state.finish.y = state.boss.y;
     state.finish.active = true;
@@ -1779,6 +1814,7 @@
     state.bomb.charge = 0;
     state.bomb.freezeHold = 0;
     state.bomb.stage = 'idle';
+    state.bomb.pendingVictory = false;
     state.shake = Math.max(state.shake, 1.1);
     state.killFlash = Math.max(state.killFlash, 0.72);
     state.invuln = Math.max(state.invuln, 1.5);
@@ -2192,7 +2228,17 @@
     if (state.boss.damageFlash > 0) state.boss.damageFlash = Math.max(0, state.boss.damageFlash - scaledDt);
 
     updateBossPhase();
-    if (state.boss.hp <= 0 && !state.finish.active && state.running) {
+    if (state.boss.hp <= 0 && state.bomb.active && !state.bomb.pendingVictory) {
+      queueBombVictory();
+      if (state.bomb.stage === 'assault') setBombStage('recover');
+    }
+    if (
+      state.boss.hp <= 0 &&
+      !state.finish.active &&
+      state.running &&
+      !state.bomb.active &&
+      !state.bomb.pendingVictory
+    ) {
       startVictorySequence();
     }
   }
@@ -2270,7 +2316,11 @@
         return aura;
       }
       if (state.bomb.stage === 'recover') {
-        return 0.02 + (1 - clamp(state.bomb.stageTimer / BOMB_RECOVERY_TIME, 0, 1)) * 0.04;
+        const recoverT = clamp(state.bomb.stageTimer / BOMB_RECOVERY_TIME, 0, 1);
+        const collapseT = easeInCubic(clamp(recoverT / 0.78, 0, 1));
+        const flashT = clamp((recoverT - 0.78) / 0.22, 0, 1);
+        const endFlash = Math.pow(Math.sin(flashT * Math.PI * 2), 6);
+        return 0.01 + (1 - collapseT) * 0.03 + endFlash * 0.20;
       }
       return 0;
     }
@@ -2387,33 +2437,16 @@
       ctx.lineWidth = 2;
     }
 
-    const traceWingPath = (side, tipExtend = 0, backExpand = 0) => {
-      ctx.beginPath();
-      if (state.phase === 4) {
-        ctx.moveTo(side * (14 - backExpand * 0.18), -22 - backExpand * 0.55);
-        ctx.lineTo(side * (spec.wingTipReach + 4 + tipExtend), -2);
-        ctx.lineTo(side * (14 - backExpand * 0.18), 24 + backExpand * 0.42);
-        ctx.lineTo(side * (-8 - backExpand), 6 + backExpand * 0.15);
-      } else {
-        ctx.moveTo(side * 10, -18);
-        ctx.lineTo(side * spec.wingTipReach, 0);
-        ctx.lineTo(side * 10, 20);
-        ctx.lineTo(side * -10, 4);
-      }
-      ctx.closePath();
-    };
-
     const drawWing = (side) => {
       ctx.save();
       ctx.translate(side * spec.wingAnchorX, spec.wingYOffset);
       ctx.rotate(side * ((state.phase === 4 ? 0.08 : 0.1) + wingTilt * 0.01));
-
       ctx.beginPath();
       if (state.phase === 4) {
-        ctx.moveTo(side * spec.wingRootFront, spec.wingTop);
-        ctx.lineTo(side * (spec.wingTipReach + 4), -3);
-        ctx.lineTo(side * spec.wingRootBack, spec.wingBottom);
-        ctx.lineTo(side * -spec.wingJointInset, 7);
+        ctx.moveTo(side * 14, -22);
+        ctx.lineTo(side * (spec.wingTipReach + 4), -2);
+        ctx.lineTo(side * 14, 24);
+        ctx.lineTo(side * -8, 6);
       } else {
         ctx.moveTo(side * 10, -18);
         ctx.lineTo(side * spec.wingTipReach, 0);
@@ -3245,9 +3278,24 @@
     }
 
     if (state.bomb.stage === 'assault' || state.bomb.stage === 'recover') {
+      const recoverT = state.bomb.stage === 'recover'
+        ? clamp(state.bomb.stageTimer / BOMB_RECOVERY_TIME, 0, 1)
+        : 0;
+      const collapseT = state.bomb.stage === 'recover'
+        ? easeInCubic(clamp(recoverT / 0.78, 0, 1))
+        : 0;
+      const flashT = state.bomb.stage === 'recover'
+        ? clamp((recoverT - 0.78) / 0.22, 0, 1)
+        : 0;
+      const endFlash = state.bomb.stage === 'recover'
+        ? Math.pow(Math.sin(flashT * Math.PI * 2), 6)
+        : 0;
       const attackRatio = state.bomb.stage === 'assault'
         ? 1
-        : 1 - clamp(state.bomb.stageTimer / BOMB_RECOVERY_TIME, 0, 1);
+        : 1 - Math.min(0.42, recoverT * 0.42);
+      const towerFade = state.bomb.stage === 'recover'
+        ? 1 - easeOutCubic(clamp(recoverT / 0.58, 0, 1))
+        : 1;
       const pulse = 0.5 + 0.5 * Math.sin((state.bomb.stageTimer + performance.now() * 0.001) * 4.2);
       const beamLen = H + 280;
       const tipY = py - 12;
@@ -3259,6 +3307,9 @@
       const towerEdgeOverscan = 112;
       const towerDepthSwing = 0.5 + 0.5 * Math.sin(state.bomb.stageTimer * 1.9);
 
+      ctx.save();
+      ctx.globalAlpha = towerFade;
+
       for (const side of [-1, 1]) {
         const oppositeBoost = Math.max(0, -side * playerBias);
         const sameSidePull = Math.max(0, side * playerBias);
@@ -3267,21 +3318,16 @@
           const frontSegments = [];
           const backSegments = [];
           const coreSegments = [];
-
           const rungCount = 15 + Math.max(0, 2 - layer);
           const layerDepth = layer / Math.max(1, layerCount - 1);
-          const scroll =
-            state.bomb.stageTimer * (0.16 + layer * 0.026) +
-            layer * 0.11;
+          const scroll = state.bomb.stageTimer * (0.16 + layer * 0.026) + layer * 0.11;
 
           for (let rung = 0; rung < rungCount; rung++) {
             const phase = (scroll + rung / rungCount) % 1;
             const cell = Math.floor(scroll * rungCount) + rung;
             const y = H + 34 - phase * (H + 250);
-
             const spreadT = easeOutCubic(phase);
 
-            // 底部收紧，顶部稍微展开
             const farBase = lerp(
               120 + layer * 18,
               W * (0.72 + layer * 0.026),
@@ -3292,33 +3338,10 @@
               150 + layer * 22,
               spreadT
             );
-
-            // 下面更紧更直，上面抬升稍大一点
-            const lift = lerp(
-              10 + layer * 2.0,
-              32 + layer * 6.0,
-              spreadT
-            );
-            const depthSkew = lerp(
-              5 + layer * 1.2,
-              24 + layer * 4.2,
-              spreadT
-            );
-
-            // 贴边补偿也主要作用在上半部，避免顶端缺口
-            const overscan = lerp(
-              0,
-              towerEdgeOverscan + layer * 18,
-              spreadT
-            ) * oppositeBoost;
-
-            const pull = lerp(
-              8 + layer * 2,
-              26 + layer * 5,
-              spreadT
-            ) * sameSidePull;
-
-            // 额外顶部展开，但控制得比较温和
+            const lift = lerp(10 + layer * 2.0, 32 + layer * 6.0, spreadT);
+            const depthSkew = lerp(5 + layer * 1.2, 24 + layer * 4.2, spreadT);
+            const overscan = lerp(0, towerEdgeOverscan + layer * 18, spreadT) * oppositeBoost;
+            const pull = lerp(8 + layer * 2, 26 + layer * 5, spreadT) * sameSidePull;
             const widthBoost = spreadT * (14 + layer * 4) * (0.55 + towerDepthSwing * 0.45);
 
             const outer = farBase + overscan - pull + widthBoost;
@@ -3326,44 +3349,26 @@
               nearBase + overscan * 0.18 - pull * 0.08 + widthBoost * 0.14,
               24 + layer * 5
             );
-
             const middle = lerp(inner, outer, 0.46 + layerDepth * 0.08);
-
             const flip = cell % 2 === 0 ? 1 : -1;
 
             const frontX = towerCenter + side * (flip > 0 ? outer : inner);
             const backX = towerCenter + side * (flip > 0 ? inner : outer) + side * depthSkew;
             const coreX = towerCenter + side * middle + side * depthSkew * 0.34;
 
-            frontSegments.push({
-              x: frontX,
-              y,
-              phase,
-            });
-
-            backSegments.push({
-              x: backX,
-              y: y - lift,
-              phase,
-            });
-
-            coreSegments.push({
-              x: coreX,
-              y: y - lift * 0.52,
-              phase,
-            });
+            frontSegments.push({ x: frontX, y, phase });
+            backSegments.push({ x: backX, y: y - lift, phase });
+            coreSegments.push({ x: coreX, y: y - lift * 0.52, phase });
           }
 
-          const accent =
-            colorRatio > 0.20 && layer <= 1
-              ? (side < 0 ? 'magenta' : 'cyan')
-              : 'white';
+          const accent = colorRatio > 0.20 && layer <= 1
+            ? (side < 0 ? 'magenta' : 'cyan')
+            : 'white';
 
           const frontAlpha = attackRatio * (0.10 + layer * 0.020);
           const backAlpha = attackRatio * (0.058 + layer * 0.016);
           const coreAlpha = attackRatio * (0.038 + layer * 0.010);
 
-          // 前轮廓
           ctx.strokeStyle = palette(accent, frontAlpha);
           ctx.lineWidth = layer === 0 ? 2.1 : layer === 1 ? 1.7 : 1.35;
           ctx.beginPath();
@@ -3373,7 +3378,6 @@
           });
           ctx.stroke();
 
-          // 后轮廓
           ctx.strokeStyle = palette('white', backAlpha);
           ctx.lineWidth = layer === 0 ? 1.35 : 1.05;
           ctx.beginPath();
@@ -3383,7 +3387,6 @@
           });
           ctx.stroke();
 
-          // 中间骨架
           ctx.strokeStyle = palette(accent, coreAlpha);
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -3397,10 +3400,8 @@
             const f = frontSegments[i];
             const b = backSegments[i];
             const c = coreSegments[i];
-
             const alpha = attackRatio * (0.040 + (1 - f.phase) * 0.034 + layer * 0.006);
 
-            // 前 -> 后
             ctx.strokeStyle = palette(i % 2 === 0 ? accent : 'white', alpha);
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -3408,14 +3409,12 @@
             ctx.lineTo(b.x, b.y);
             ctx.stroke();
 
-            // 前 -> 中
             ctx.strokeStyle = palette(accent, alpha * 0.72);
             ctx.beginPath();
             ctx.moveTo(f.x, f.y);
             ctx.lineTo(c.x, c.y);
             ctx.stroke();
 
-            // 中 -> 后
             ctx.strokeStyle = palette('white', alpha * 0.60);
             ctx.beginPath();
             ctx.moveTo(c.x, c.y);
@@ -3431,7 +3430,6 @@
             const c0 = coreSegments[i];
             const c1 = coreSegments[i + 1];
 
-            // 原有交错斜撑加强版
             ctx.strokeStyle = palette(accent, attackRatio * (0.034 + layer * 0.010));
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -3445,14 +3443,12 @@
             ctx.lineTo(f1.x, f1.y);
             ctx.stroke();
 
-            // 中层连接
             ctx.strokeStyle = palette(accent, attackRatio * (0.018 + layer * 0.006));
             ctx.beginPath();
             ctx.moveTo(c0.x, c0.y);
             ctx.lineTo(c1.x, c1.y);
             ctx.stroke();
 
-            // 相邻层封闭感
             if (i % 2 === 0) {
               ctx.strokeStyle = palette('white', attackRatio * (0.014 + layer * 0.005));
               ctx.beginPath();
@@ -3468,7 +3464,6 @@
             }
           }
 
-          // 纵向导轨：每隔几根抽样一次，避免太乱
           for (let i = 0; i < frontSegments.length - 3; i += 3) {
             const f0 = frontSegments[i];
             const f1 = frontSegments[i + 3];
@@ -3497,7 +3492,6 @@
             ctx.stroke();
           }
 
-          // 顶部封口线，让远端更像“塔”
           if (frontSegments.length > 1) {
             const topFront = frontSegments[frontSegments.length - 1];
             const topBack = backSegments[backSegments.length - 1];
@@ -3535,16 +3529,49 @@
         }
       }
 
+      ctx.restore();
+
       const beamLayers = [
-        { color: 'magenta', alpha: 0.05 * colorRatio * attackRatio, root: 28, throat: 48, far: 216 },
-        { color: 'cyan', alpha: 0.055 * colorRatio * attackRatio, root: 22, throat: 38, far: 176 },
-        { color: 'white', alpha: 0.12 * attackRatio, root: 18, throat: 30, far: 142 },
-        { color: 'white', alpha: 0.32 * attackRatio, root: 10, throat: 18, far: 72 },
-        { color: 'white', alpha: 0.96 * attackRatio, root: 4.5, throat: 8, far: 14 },
+        {
+          color: 'magenta',
+          alpha: (0.05 * colorRatio * attackRatio) * (1 - flashT * 0.72),
+          root: lerp(28, 2.4, collapseT),
+          throat: lerp(48, 3.2, collapseT),
+          far: lerp(216, 3.2, collapseT),
+        },
+        {
+          color: 'cyan',
+          alpha: (0.055 * colorRatio * attackRatio) * (1 - flashT * 0.72),
+          root: lerp(22, 2.0, collapseT),
+          throat: lerp(38, 2.8, collapseT),
+          far: lerp(176, 2.6, collapseT),
+        },
+        {
+          color: 'white',
+          alpha: (0.12 * attackRatio) * (1 - flashT * 0.55),
+          root: lerp(18, 1.8, collapseT),
+          throat: lerp(30, 2.4, collapseT),
+          far: lerp(142, 2.1, collapseT),
+        },
+        {
+          color: 'white',
+          alpha: (0.32 * attackRatio) * (1 - flashT * 0.35),
+          root: lerp(10, 1.2, collapseT),
+          throat: lerp(18, 1.6, collapseT),
+          far: lerp(72, 1.35, collapseT),
+        },
+        {
+          color: 'white',
+          alpha: (0.96 * attackRatio) * (1 - flashT * 0.18),
+          root: lerp(4.5, 0.7, collapseT),
+          throat: lerp(8, 1.0, collapseT),
+          far: lerp(14, 0.85, collapseT),
+        },
       ];
 
       beamLayers.forEach((layer) => {
         if (layer.alpha <= 0) return;
+
         ctx.fillStyle = palette(layer.color, layer.alpha);
         ctx.beginPath();
         ctx.moveTo(px - 3.5, tipY);
@@ -3559,35 +3586,37 @@
         ctx.fill();
       });
 
-      ctx.fillStyle = palette('white', attackRatio * (0.10 + pulse * 0.03));
+      const tipSpread = lerp(13, 4.2, collapseT);
+      ctx.fillStyle = palette('white', attackRatio * (0.10 + pulse * 0.03 + endFlash * 0.10));
       ctx.beginPath();
       ctx.moveTo(px, tipY - 4);
-      ctx.lineTo(px - 13, emitY + 6);
+      ctx.lineTo(px - tipSpread, emitY + 6);
       ctx.lineTo(px, emitY - 8);
-      ctx.lineTo(px + 13, emitY + 6);
+      ctx.lineTo(px + tipSpread, emitY + 6);
       ctx.closePath();
       ctx.fill();
 
-      ctx.strokeStyle = palette('white', attackRatio * 0.28);
-      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = palette('white', attackRatio * (0.28 + endFlash * 0.20));
+      ctx.lineWidth = lerp(1.8, 1.2, collapseT);
       ctx.beginPath();
       ctx.moveTo(px, tipY - 4);
-      ctx.lineTo(px - 13, emitY + 6);
+      ctx.lineTo(px - tipSpread, emitY + 6);
       ctx.lineTo(px, emitY - 8);
-      ctx.lineTo(px + 13, emitY + 6);
+      ctx.lineTo(px + tipSpread, emitY + 6);
       ctx.closePath();
       ctx.stroke();
 
       for (let i = 0; i < 7; i++) {
         const phase = ((state.bomb.stageTimer * 0.42) + i / 7) % 1;
         const depth = 48 + phase * (beamLen - 86);
-        const beamHalf = bombSprayHalfWidth(depth, 0.92);
-        const shell = beamHalf + 36 + i * 12 + pulse * 5;
-        const flare = 14 + i * 5;
+        const beamHalf = lerp(bombSprayHalfWidth(depth, 0.92), 0.9, collapseT);
+        const shell = lerp(beamHalf + 36 + i * 12 + pulse * 5, beamHalf + 3 + i * 0.5, collapseT);
+        const flare = lerp(14 + i * 5, 1.4, collapseT);
         const y = emitY - depth;
         const color = colorRatio > 0.24 && i % 2 === 0 ? pickBombColor(i) : 'white';
-        ctx.strokeStyle = palette(color, attackRatio * (0.05 + (1 - phase) * 0.05));
-        ctx.lineWidth = 1.45;
+
+        ctx.strokeStyle = palette(color, attackRatio * (0.05 + (1 - phase) * 0.05) * (1 - flashT * 0.55));
+        ctx.lineWidth = lerp(1.45, 1.0, collapseT);
         ctx.beginPath();
         ctx.moveTo(px - shell, y);
         ctx.lineTo(px - beamHalf - flare, y + 10);
@@ -3606,34 +3635,34 @@
       ];
 
       rails.forEach((rail) => {
-        ctx.strokeStyle = palette(rail.color, attackRatio * rail.alpha);
-        ctx.lineWidth = rail.width;
+        const farX = lerp(px + rail.side * (rail.lane * 92), px + rail.side * 1.4, collapseT);
+
+        ctx.strokeStyle = palette(rail.color, attackRatio * rail.alpha * (1 - flashT * 0.50));
+        ctx.lineWidth = lerp(rail.width, Math.max(1, rail.width * 0.48), collapseT);
         ctx.beginPath();
         ctx.moveTo(px + rail.side * 6, tipY - 2);
         ctx.lineTo(px + rail.side * (rail.lane * 14), throatY + 8);
         ctx.lineTo(px + rail.side * (rail.lane * 30), emitY - 120);
-        ctx.lineTo(px + rail.side * (rail.lane * 92), emitY - beamLen);
+        ctx.lineTo(farX, emitY - beamLen);
         ctx.stroke();
       });
 
-      if (state.bomb.stage === 'recover') {
-        for (let i = 0; i < 18; i++) {
-          const phase = ((state.bomb.stageTimer * 0.36) + i / 18) % 1;
-          const depth = phase * beamLen;
-          const half = bombSprayHalfWidth(depth, 1.02);
-          const y = emitY - depth;
-          const drift = 28 + i * 8;
-          const color = colorRatio > 0.18 ? pickBombColor(i) : 'white';
-          for (const side of [-1, 1]) {
-            ctx.strokeStyle = palette(color, attackRatio * (1 - phase) * 0.10);
-            ctx.lineWidth = 1 + (i % 3) * 0.25;
-            ctx.beginPath();
-            ctx.moveTo(px + side * (half + 10), y + 8);
-            ctx.lineTo(px + side * (half + drift * 0.55), y - 6);
-            ctx.lineTo(px + side * (half + drift), y - 28);
-            ctx.stroke();
-          }
-        }
+      const finalRayHalf = lerp(4.2, 0.8, collapseT);
+      ctx.fillStyle = palette('white', attackRatio * (0.12 + collapseT * 0.22 + endFlash * 0.82));
+      ctx.fillRect(px - finalRayHalf, emitY - beamLen - 8, finalRayHalf * 2, beamLen + 18);
+
+      if (state.bomb.stage === 'recover' && endFlash > 0.001) {
+        const flashWidth = lerp(10, 52, endFlash);
+
+        ctx.fillStyle = palette('white', endFlash * 0.18);
+        ctx.fillRect(px - flashWidth * 0.5, emitY - beamLen - 24, flashWidth, beamLen + 44);
+
+        ctx.strokeStyle = palette('white', 0.26 + endFlash * 0.60);
+        ctx.lineWidth = 1.1 + endFlash * 2.2;
+        ctx.beginPath();
+        ctx.moveTo(px, tipY - 10);
+        ctx.lineTo(px, emitY - beamLen - 10);
+        ctx.stroke();
       }
     }
 
@@ -3641,6 +3670,8 @@
   }
 
   function drawVictoryFx() {
+    if (!state.finish.active) return;
+
     const t = getVictoryPose();
     if (t <= 0) return;
 
@@ -3932,6 +3963,10 @@
 
   function lerp(a, b, t) {
     return a + (b - a) * t;
+  }
+
+  function easeInCubic(t) {
+    return t * t * t;
   }
 
   function easeOutCubic(t) {
