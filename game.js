@@ -20,18 +20,21 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   const overlay = document.getElementById('overlay');
   const resultOverlay = document.getElementById('resultOverlay');
   const leaderboardOverlay = document.getElementById('leaderboardOverlay');
+  const leaderboardDetailOverlay = document.getElementById('leaderboardDetailOverlay');
   const saveOverlay = document.getElementById('saveOverlay');
   const resultKicker = document.getElementById('resultKicker');
   const resultTitle = document.getElementById('resultTitle');
   const resultStats = document.getElementById('resultStats');
   const leaderboardList = document.getElementById('leaderboardList');
   const leaderboardDetail = document.getElementById('leaderboardDetail');
+  const leaderboardDetailModal = document.getElementById('leaderboardDetailModal');
   const startBtn = document.getElementById('startBtn');
   const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
   const restartBtn = document.getElementById('restartBtn');
   const saveRecordBtn = document.getElementById('saveRecordBtn');
   const resultLeaderboardBtn = document.getElementById('resultLeaderboardBtn');
   const leaderboardExitBtn = document.getElementById('leaderboardExitBtn');
+  const leaderboardDetailBackBtn = document.getElementById('leaderboardDetailBackBtn');
   const saveNameInput = document.getElementById('saveNameInput');
   const saveNameStatus = document.getElementById('saveNameStatus');
   const confirmSaveBtn = document.getElementById('confirmSaveBtn');
@@ -130,6 +133,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     leaderboardRecords: [],
     leaderboardSyncStop: null,
     saveNameCheckToken: 0,
+    saveSubmitting: false,
     finish: {
       active: false,
       timer: 0,
@@ -317,6 +321,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     resetGame();
     updateSaveButtonState();
     hideSaveOverlay();
+    hideLeaderboardDetailOverlay();
     hideBaseOverlays();
     state.running = true;
     state.lastFrame = performance.now();
@@ -464,7 +469,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
               renderLeaderboard(state.selectedLeaderboardId);
             }
 
-            if (saveOverlay.classList.contains('visible')) {
+            if (saveOverlay.classList.contains('visible') && !state.saveSubmitting) {
               void updateSaveNameStatus();
             }
           },
@@ -477,7 +482,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
               renderLeaderboard(state.selectedLeaderboardId);
             }
 
-            if (saveOverlay.classList.contains('visible')) {
+            if (saveOverlay.classList.contains('visible') && !state.saveSubmitting) {
               void updateSaveNameStatus();
             }
           }
@@ -554,6 +559,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     [overlay, resultOverlay, leaderboardOverlay].forEach((element) => {
       setOverlayVisibility(element, false);
     });
+    hideLeaderboardDetailOverlay();
   }
 
   function showBaseOverlay(target) {
@@ -562,6 +568,7 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   }
 
   function showSaveOverlay() {
+    state.saveSubmitting = false;
     setOverlayVisibility(saveOverlay, true);
     void updateSaveNameStatus();
     saveNameInput.focus();
@@ -569,11 +576,23 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   }
 
   function hideSaveOverlay() {
+    state.saveSubmitting = false;
     setOverlayVisibility(saveOverlay, false);
     state.saveNameCheckToken += 1;
     saveNameStatus.textContent = getSaveOverlayHint();
     saveNameStatus.className = 'input-hint';
     confirmSaveBtn.disabled = !state.lastResult || state.lastResult.saved;
+  }
+
+  function showLeaderboardDetailOverlay(record) {
+    if (!record) return;
+
+    leaderboardDetailModal.innerHTML = buildLeaderboardDetail(record);
+    setOverlayVisibility(leaderboardDetailOverlay, true);
+  }
+
+  function hideLeaderboardDetailOverlay() {
+    setOverlayVisibility(leaderboardDetailOverlay, false);
   }
 
   async function getSaveNameValidation(name = sanitizePlayerName(saveNameInput.value)) {
@@ -632,6 +651,13 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   async function updateSaveNameStatus() {
     const requestToken = ++state.saveNameCheckToken;
     const name = sanitizePlayerName(saveNameInput.value);
+
+    if (state.saveSubmitting) {
+      saveNameStatus.textContent = '正在保存成绩...';
+      saveNameStatus.className = 'input-hint';
+      confirmSaveBtn.disabled = true;
+      return { ok: false, message: 'saving' };
+    }
 
     if (!name) {
       saveNameStatus.textContent = getSaveOverlayHint();
@@ -848,6 +874,12 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       return;
     }
 
+    state.saveSubmitting = true;
+    state.saveNameCheckToken += 1;
+    saveNameStatus.textContent = '正在保存成绩...';
+    saveNameStatus.className = 'input-hint';
+    confirmSaveBtn.disabled = true;
+
     try {
       const nextRecord = createLeaderboardRecord(name, state.lastResult);
       const savedRecord = await leaderboardClient.saveRecord(nextRecord);
@@ -860,18 +892,21 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       renderLeaderboard(savedRecord.id);
       showBaseOverlay(leaderboardOverlay);
     } catch (error) {
+      state.saveSubmitting = false;
       console.warn('Failed to save leaderboard record.', error);
 
       if (error?.code === 'SCORE_NOT_HIGHER') {
         const existingScore = error?.existingRecord?.finalScore;
         saveNameStatus.textContent = Number.isFinite(existingScore)
-          ? `该昵称已有更高或相同成绩（${formatScore(existingScore)}），本次不能覆盖。`
-          : '该昵称已有更高或相同成绩，本次不能覆盖。';
+            ? `该昵称已有更高或相同成绩（${formatScore(existingScore)}），本次不能覆盖。`
+            : '该昵称已有更高或相同成绩，本次不能覆盖。';
         saveNameStatus.className = 'input-hint error';
+        confirmSaveBtn.disabled = false;
         saveNameInput.focus();
         return;
       }
 
+      confirmSaveBtn.disabled = false;
       window.alert(
         state.leaderboardMode === 'firebase'
           ? '保存失败，请确认 Firebase Realtime Database 已启用并且规则已配置。'
@@ -886,21 +921,24 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
     if (state.leaderboardMode === 'firebase' && !state.leaderboardReady && !records.length) {
       state.selectedLeaderboardId = null;
       leaderboardList.innerHTML = '<div class="leaderboard-empty">云端排行榜连接中...</div>';
-      leaderboardDetail.innerHTML = '<div class="leaderboard-empty">正在从 Firebase 读取共享排行榜。</div>';
+      leaderboardDetail.textContent = '正在从 Firebase 读取共享排行榜。';
+      hideLeaderboardDetailOverlay();
       return;
     }
 
     if (state.leaderboardMode === 'firebase' && state.leaderboardError && !records.length) {
       state.selectedLeaderboardId = null;
       leaderboardList.innerHTML = `<div class="leaderboard-empty">${escapeHtml(state.leaderboardError)}</div>`;
-      leaderboardDetail.innerHTML = '<div class="leaderboard-empty">请先检查 firebase-config.js 和数据库规则配置。</div>';
+      leaderboardDetail.textContent = '请先检查 firebase-config.js 和数据库规则配置。';
+      hideLeaderboardDetailOverlay();
       return;
     }
 
     if (!records.length) {
       state.selectedLeaderboardId = null;
       leaderboardList.innerHTML = '<div class="leaderboard-empty">还没有记录，先完成一局并保存吧。</div>';
-      leaderboardDetail.innerHTML = `<div class="leaderboard-empty">${escapeHtml(getLeaderboardEmptyDetail())}</div>`;
+      leaderboardDetail.textContent = getLeaderboardEmptyDetail();
+      hideLeaderboardDetailOverlay();
       return;
     }
 
@@ -914,11 +952,19 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
       .join('');
 
     const activeRecord = records.find((record) => record.id === activeId) || records[0];
-    leaderboardDetail.innerHTML = buildLeaderboardDetail(activeRecord);
+    leaderboardDetail.textContent = `当前选中：${activeRecord.name}，点击列表项可弹出详细结算。`;
+
+    if (leaderboardDetailOverlay.classList.contains('visible')) {
+      showLeaderboardDetailOverlay(activeRecord);
+    }
 
     leaderboardList.querySelectorAll('[data-record-id]').forEach((button) => {
       button.addEventListener('click', () => {
-        renderLeaderboard(button.dataset.recordId);
+        const nextRecordId = button.dataset.recordId;
+        const nextRecord = records.find((record) => record.id === nextRecordId);
+
+        renderLeaderboard(nextRecordId);
+        showLeaderboardDetailOverlay(nextRecord);
       });
     });
   }
@@ -4682,6 +4728,12 @@ import { firebaseLeaderboardConfig } from './firebase-config.js';
   saveRecordBtn.addEventListener('click', saveCurrentResult);
   resultLeaderboardBtn.addEventListener('click', openLeaderboard);
   leaderboardExitBtn.addEventListener('click', returnToStartScreen);
+  leaderboardDetailBackBtn.addEventListener('click', hideLeaderboardDetailOverlay);
+  leaderboardDetailOverlay.addEventListener('click', (event) => {
+    if (event.target === leaderboardDetailOverlay) {
+      hideLeaderboardDetailOverlay();
+    }
+  });
   confirmSaveBtn.addEventListener('click', confirmSaveCurrentResult);
   cancelSaveBtn.addEventListener('click', hideSaveOverlay);
   saveNameInput.addEventListener('input', updateSaveNameStatus);
